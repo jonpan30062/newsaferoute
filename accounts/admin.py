@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User
+from .models import User, Building
 
 
 @admin.register(User)
@@ -25,3 +25,12 @@ class UserAdmin(BaseUserAdmin):
             "fields": ("email", "username", "first_name", "last_name", "password1", "password2"),
         }),
     )
+
+
+@admin.register(Building)
+class BuildingAdmin(admin.ModelAdmin):
+    """Admin configuration for Building model."""
+    list_display = ["name", "code", "address", "latitude", "longitude"]
+    list_filter = ["created_at"]
+    search_fields = ["name", "code", "address"]
+    ordering = ["name"]

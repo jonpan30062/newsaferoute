@@ -2,26 +2,24 @@
 *.py[cod]
 *$py.class
 *.so
-.Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
+
+# Virtual Environment
+venv/
+env/
+ENV/
 
 # Django
 *.log
 db.sqlite3
 db.sqlite3-journal
-media/
-staticfiles/
+/staticfiles/
+/media/
 
 # Environment variables
 .env
 .env.local
-.venv
-venv/
-ENV/
-env/
 
 # IDE
 .vscode/
@@ -34,6 +32,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Migrations (optional - you may want to commit these)
+# Migrations (optional - uncomment if you want to exclude)
 # */migrations/*.py
 # !*/migrations/__init__.py

@@ -25,3 +25,26 @@ class User(AbstractUser):
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
+
+
+class Building(models.Model):
+    """
+    Model representing a campus building with location information.
+    Supports search by name or building code.
+    """
+    name = models.CharField(max_length=255, verbose_name="Building Name")
+    code = models.CharField(max_length=50, unique=True, verbose_name="Building Code")
+    address = models.TextField(verbose_name="Address")
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Latitude")
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Longitude")
+    description = models.TextField(blank=True, verbose_name="Description")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Building"
+        verbose_name_plural = "Buildings"
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"

@@ -3,7 +3,10 @@ from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse
+from django.db.models import Q
 from .forms import RegistrationForm, LoginForm
+from .models import Building
 
 
 def register_view(request):
@@ -117,3 +120,51 @@ def home_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
     return render(request, 'accounts/home.html')
+
+
+def map_view(request):
+    """
+    Map view - displays interactive map with building search and routing.
+    """
+    from django.conf import settings
+    context = {
+        'google_maps_api_key': settings.GOOGLE_MAPS_API_KEY
+    }
+    return render(request, 'accounts/map.html', context)
+
+
+def building_search_api(request):
+    """
+    API endpoint for searching buildings by name or code.
+    Supports partial matching (case-insensitive).
+    Returns JSON list of matching buildings.
+    """
+    query = request.GET.get('q', '').strip()
+    
+    if not query:
+        # Return all buildings if no query provided
+        buildings = Building.objects.all()[:20]  # Limit to 20 results
+    else:
+        # Search by name or code (partial match, case-insensitive)
+        buildings = Building.objects.filter(
+            Q(name__icontains=query) | Q(code__icontains=query)
+        )[:20]
+    
+    # Format results as JSON
+    results = []
+    for building in buildings:
+        results.append({
+            'id': building.id,
+            'name': building.name,
+            'code': building.code,
+            'address': building.address,
+            'latitude': float(building.latitude),
+            'longitude': float(building.longitude),
+            'description': building.description,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'count': len(results),
+        'buildings': results
+    })
