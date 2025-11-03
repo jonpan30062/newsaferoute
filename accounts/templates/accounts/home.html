@@ -1,0 +1,53 @@
+{% extends 'accounts/base.html' %}
+
+{% block title %}Welcome to SafeRoute{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 text-center text-white">
+            <h1 class="display-3 fw-bold mb-4">Welcome to SafeRoute</h1>
+            <p class="lead mb-5">
+                Your trusted companion for safe navigation and route planning.
+                Join us today to save your preferences and access all available features.
+            </p>
+
+            <div class="d-flex justify-content-center gap-3">
+                <a href="{% url 'register' %}" class="btn btn-light btn-lg px-5">
+                    Get Started
+                </a>
+                <a href="{% url 'login' %}" class="btn btn-outline-light btn-lg px-5">
+                    Login
+                </a>
+            </div>
+
+            <div class="row mt-5 pt-5">
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-white bg-opacity-10 text-white border-0">
+                        <div class="card-body">
+                            <h3 class="h5 mb-3">Save Preferences</h3>
+                            <p class="small">Store your favorite routes and buildings for quick access.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-white bg-opacity-10 text-white border-0">
+                        <div class="card-body">
+                            <h3 class="h5 mb-3">Personalized Settings</h3>
+                            <p class="small">Customize your experience with personalized settings.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card bg-white bg-opacity-10 text-white border-0">
+                        <div class="card-body">
+                            <h3 class="h5 mb-3">Safe Navigation</h3>
+                            <p class="small">Access advanced safety features and route planning.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
