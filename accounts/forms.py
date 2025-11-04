@@ -113,3 +113,59 @@ class LoginForm(AuthenticationForm):
         'invalid_login': "Please enter a correct email and password. Note that both fields may be case-sensitive.",
         'inactive': "This account is inactive.",
     }
+
+
+class ProfileUpdateForm(forms.ModelForm):
+    """
+    Form for updating user profile information.
+    Allows users to update their first name, last name, and email.
+    """
+    email = forms.EmailField(
+        max_length=254,
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Email Address'
+        })
+    )
+    first_name = forms.CharField(
+        max_length=150,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'First Name'
+        })
+    )
+    last_name = forms.CharField(
+        max_length=150,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Last Name'
+        })
+    )
+
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email']
+
+    def __init__(self, *args, **kwargs):
+        """Store the user instance for validation."""
+        self.user = kwargs.get('instance')
+        super().__init__(*args, **kwargs)
+
+    def clean_email(self):
+        """Validate that the email is unique (excluding current user)."""
+        email = self.cleaned_data.get('email')
+        if User.objects.filter(email=email).exclude(pk=self.user.pk).exists():
+            raise ValidationError("A user with this email already exists.")
+        return email
+
+    def save(self, commit=True):
+        """Update user profile and sync username with email."""
+        user = super().save(commit=False)
+        # Keep username in sync with email
+        user.username = self.cleaned_data['email']
+        if commit:
+            user.save()
+        return user

@@ -5,8 +5,8 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
 from django.db.models import Q
-from .forms import RegistrationForm, LoginForm
-from .models import Building
+from .forms import RegistrationForm, LoginForm, ProfileUpdateForm
+from .models import Building, Favorite, SavedRoute
 
 
 def register_view(request):
@@ -97,11 +97,43 @@ def dashboard_view(request):
     Displays user's saved buildings and personalized settings.
     Requires authentication - redirects to login if not authenticated.
     """
+    favorites_count = Favorite.objects.filter(user=request.user).count()
+    saved_routes_count = SavedRoute.objects.filter(user=request.user).count()
+
     context = {
         'user': request.user,
         'full_name': request.user.get_full_name(),
+        'favorites_count': favorites_count,
+        'saved_routes_count': saved_routes_count,
     }
     return render(request, 'accounts/dashboard.html', context)
+
+
+@login_required
+def settings_view(request):
+    """
+    Settings/Profile update view for logged-in users.
+    Allows users to update their profile information (name, email).
+    """
+    if request.method == 'POST':
+        form = ProfileUpdateForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request,
+                'Your profile has been updated successfully!'
+            )
+            return redirect('settings')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = ProfileUpdateForm(instance=request.user)
+
+    context = {
+        'user': request.user,
+        'form': form,
+    }
+    return render(request, 'accounts/settings.html', context)
 
 
 def logout_view(request):
@@ -168,3 +200,467 @@ def building_search_api(request):
         'count': len(results),
         'buildings': results
     })
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_favorite_api(request):
+    """
+    API endpoint to toggle a building as favorite.
+    If building is already favorited, remove it. Otherwise, add it.
+    """
+    import json
+
+    try:
+        data = json.loads(request.body)
+        building_id = data.get('building_id')
+
+        if not building_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Building ID is required'
+            }, status=400)
+
+        # Check if building exists
+        try:
+            building = Building.objects.get(id=building_id)
+        except Building.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Building not found'
+            }, status=404)
+
+        # Check if already favorited
+        favorite = Favorite.objects.filter(user=request.user, building=building).first()
+
+        if favorite:
+            # Remove from favorites
+            favorite.delete()
+            return JsonResponse({
+                'success': True,
+                'action': 'removed',
+                'message': f'{building.name} removed from favorites'
+            })
+        else:
+            # Add to favorites
+            favorite = Favorite.objects.create(user=request.user, building=building)
+            return JsonResponse({
+                'success': True,
+                'action': 'added',
+                'message': f'{building.name} added to favorites',
+                'favorite_id': favorite.id
+            })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def user_favorites_api(request):
+    """
+    API endpoint to get all favorites for the current user.
+    Returns list of favorited buildings with custom names if set.
+    """
+    favorites = Favorite.objects.filter(user=request.user).select_related('building')
+
+    results = []
+    for favorite in favorites:
+        results.append({
+            'id': favorite.id,
+            'building_id': favorite.building.id,
+            'building_name': favorite.building.name,
+            'building_code': favorite.building.code,
+            'custom_name': favorite.custom_name,
+            'display_name': favorite.get_display_name(),
+            'address': favorite.building.address,
+            'latitude': float(favorite.building.latitude),
+            'longitude': float(favorite.building.longitude),
+            'description': favorite.building.description,
+            'created_at': favorite.created_at.isoformat(),
+        })
+
+    return JsonResponse({
+        'success': True,
+        'count': len(results),
+        'favorites': results
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def rename_favorite_api(request):
+    """
+    API endpoint to rename a favorite (set custom name).
+    """
+    import json
+
+    try:
+        data = json.loads(request.body)
+        favorite_id = data.get('favorite_id')
+        custom_name = data.get('custom_name', '').strip()
+
+        if not favorite_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Favorite ID is required'
+            }, status=400)
+
+        # Get favorite and verify ownership
+        try:
+            favorite = Favorite.objects.get(id=favorite_id, user=request.user)
+        except Favorite.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Favorite not found or you do not have permission'
+            }, status=404)
+
+        # Update custom name
+        favorite.custom_name = custom_name
+        favorite.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Favorite renamed successfully',
+            'custom_name': custom_name,
+            'display_name': favorite.get_display_name()
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_favorite_api(request):
+    """
+    API endpoint to delete a favorite.
+    """
+    import json
+
+    try:
+        data = json.loads(request.body)
+        favorite_id = data.get('favorite_id')
+
+        if not favorite_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Favorite ID is required'
+            }, status=400)
+
+        # Get favorite and verify ownership
+        try:
+            favorite = Favorite.objects.get(id=favorite_id, user=request.user)
+        except Favorite.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Favorite not found or you do not have permission'
+            }, status=404)
+
+        building_name = favorite.building.name
+        favorite.delete()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'{building_name} removed from favorites'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def check_favorite_api(request):
+    """
+    API endpoint to check if a building is favorited by the current user.
+    """
+    building_id = request.GET.get('building_id')
+
+    if not building_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'Building ID is required'
+        }, status=400)
+
+    is_favorite = Favorite.objects.filter(
+        user=request.user,
+        building_id=building_id
+    ).exists()
+
+    return JsonResponse({
+        'success': True,
+        'is_favorite': is_favorite
+    })
+
+
+@login_required
+def favorites_view(request):
+    """
+    View to display all user favorites in a list page.
+    """
+    favorites = Favorite.objects.filter(user=request.user).select_related('building')
+
+    context = {
+        'user': request.user,
+        'favorites': favorites,
+        'favorites_count': favorites.count(),
+    }
+    return render(request, 'accounts/favorites.html', context)
+
+
+@login_required
+def saved_routes_view(request):
+    """
+    View to display all saved routes for the current user.
+    """
+    saved_routes = SavedRoute.objects.filter(user=request.user).select_related('destination_building')
+
+    context = {
+        'user': request.user,
+        'saved_routes': saved_routes,
+        'saved_routes_count': saved_routes.count(),
+    }
+    return render(request, 'accounts/saved_routes.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def save_route_api(request):
+    """
+    API endpoint to save a new route.
+    """
+    import json
+    from django.utils import timezone
+
+    try:
+        data = json.loads(request.body)
+
+        # Extract route data
+        name = data.get('name', '').strip()
+        origin_lat = data.get('origin_lat')
+        origin_lng = data.get('origin_lng')
+        origin_name = data.get('origin_name', 'My Location').strip()
+        destination_lat = data.get('destination_lat')
+        destination_lng = data.get('destination_lng')
+        destination_name = data.get('destination_name', '').strip()
+        destination_building_id = data.get('destination_building_id')
+        distance_text = data.get('distance_text', '')
+        duration_text = data.get('duration_text', '')
+        distance_value = data.get('distance_value', 0)
+        duration_value = data.get('duration_value', 0)
+
+        # Validate required fields
+        if not all([name, origin_lat, origin_lng, destination_lat, destination_lng, destination_name]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Get destination building if provided
+        destination_building = None
+        if destination_building_id:
+            try:
+                destination_building = Building.objects.get(id=destination_building_id)
+            except Building.DoesNotExist:
+                pass
+
+        # Create the saved route
+        saved_route = SavedRoute.objects.create(
+            user=request.user,
+            name=name,
+            origin_lat=origin_lat,
+            origin_lng=origin_lng,
+            origin_name=origin_name,
+            destination_lat=destination_lat,
+            destination_lng=destination_lng,
+            destination_name=destination_name,
+            destination_building=destination_building,
+            distance_text=distance_text,
+            duration_text=duration_text,
+            distance_value=distance_value,
+            duration_value=duration_value,
+            last_used=timezone.now()
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Route "{name}" saved successfully',
+            'route_id': saved_route.id
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def get_saved_routes_api(request):
+    """
+    API endpoint to get all saved routes for the current user.
+    """
+    saved_routes = SavedRoute.objects.filter(user=request.user).select_related('destination_building')
+
+    results = []
+    for route in saved_routes:
+        results.append({
+            'id': route.id,
+            'name': route.name,
+            'origin_lat': float(route.origin_lat),
+            'origin_lng': float(route.origin_lng),
+            'origin_name': route.origin_name,
+            'destination_lat': float(route.destination_lat),
+            'destination_lng': float(route.destination_lng),
+            'destination_name': route.destination_name,
+            'destination_display': route.get_destination_display(),
+            'destination_building_id': route.destination_building.id if route.destination_building else None,
+            'distance_text': route.distance_text,
+            'duration_text': route.duration_text,
+            'distance_value': route.distance_value,
+            'duration_value': route.duration_value,
+            'created_at': route.created_at.isoformat(),
+            'last_used': route.last_used.isoformat() if route.last_used else None,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'count': len(results),
+        'routes': results
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def load_saved_route_api(request):
+    """
+    API endpoint to load a saved route (updates last_used timestamp).
+    """
+    import json
+    from django.utils import timezone
+
+    try:
+        data = json.loads(request.body)
+        route_id = data.get('route_id')
+
+        if not route_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Route ID is required'
+            }, status=400)
+
+        # Get route and verify ownership
+        try:
+            route = SavedRoute.objects.get(id=route_id, user=request.user)
+        except SavedRoute.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Route not found or you do not have permission'
+            }, status=404)
+
+        # Update last_used timestamp
+        route.last_used = timezone.now()
+        route.save()
+
+        return JsonResponse({
+            'success': True,
+            'route': {
+                'id': route.id,
+                'name': route.name,
+                'origin_lat': float(route.origin_lat),
+                'origin_lng': float(route.origin_lng),
+                'origin_name': route.origin_name,
+                'destination_lat': float(route.destination_lat),
+                'destination_lng': float(route.destination_lng),
+                'destination_name': route.destination_name,
+                'destination_building_id': route.destination_building.id if route.destination_building else None,
+                'distance_text': route.distance_text,
+                'duration_text': route.duration_text,
+            }
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_saved_route_api(request):
+    """
+    API endpoint to delete a saved route.
+    """
+    import json
+
+    try:
+        data = json.loads(request.body)
+        route_id = data.get('route_id')
+
+        if not route_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Route ID is required'
+            }, status=400)
+
+        # Get route and verify ownership
+        try:
+            route = SavedRoute.objects.get(id=route_id, user=request.user)
+        except SavedRoute.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Route not found or you do not have permission'
+            }, status=404)
+
+        route_name = route.name
+        route.delete()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Route "{route_name}" deleted successfully'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

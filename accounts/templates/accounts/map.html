@@ -88,6 +88,66 @@
     .btn-route:hover {
         background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
     }
+
+    .saved-routes-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        background: white;
+        border: 2px solid #10b981;
+        color: #10b981;
+        font-weight: 500;
+        padding: 10px 20px;
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+
+    .saved-routes-btn:hover {
+        background: #10b981;
+        color: white;
+    }
+
+    .saved-routes-panel {
+        position: absolute;
+        top: 60px;
+        right: 10px;
+        width: 350px;
+        max-height: 500px;
+        overflow-y: auto;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: none;
+    }
+
+    .saved-route-item {
+        padding: 15px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .saved-route-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .saved-route-item:last-child {
+        border-bottom: none;
+    }
+
+    .btn-save-route {
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        border: none;
+        padding: 8px 20px;
+        font-weight: 500;
+        margin-left: 10px;
+    }
+
+    .btn-save-route:hover {
+        background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+    }
 </style>
 {% endblock %}
 
@@ -114,16 +174,30 @@
                 <!-- Selected Building Info -->
                 <div id="selectedBuildingInfo" style="display: none;" class="mt-3">
                     <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5 class="mb-1">
-                                <span id="selectedBuildingName"></span>
-                                <span class="badge bg-primary ms-2" id="selectedBuildingCode"></span>
-                            </h5>
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center">
+                                <h5 class="mb-1">
+                                    <span id="selectedBuildingName"></span>
+                                    <span class="badge bg-primary ms-2" id="selectedBuildingCode"></span>
+                                </h5>
+                                {% if user.is_authenticated %}
+                                <button id="favoriteToggleBtn" class="btn btn-link text-warning p-0 ms-2" style="font-size: 1.5rem; line-height: 1;" title="Add to Favorites">
+                                    <i class="bi bi-star" id="favoriteIcon"></i>
+                                </button>
+                                {% endif %}
+                            </div>
                             <p class="text-muted mb-0" id="selectedBuildingAddress"></p>
                         </div>
-                        <button id="startRouteBtn" class="btn btn-route btn-primary">
-                            <i class="bi bi-navigation"></i> Get Directions
-                        </button>
+                        <div>
+                            <button id="startRouteBtn" class="btn btn-route btn-primary">
+                                <i class="bi bi-navigation"></i> Get Directions
+                            </button>
+                            {% if user.is_authenticated %}
+                            <button id="saveRouteBtn" class="btn btn-save-route btn-warning" style="display: none;">
+                                <i class="bi bi-bookmark-plus"></i> Save Route
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
                     
                     <!-- Route Information -->
@@ -133,14 +207,37 @@
                                 <strong>Distance:</strong> <span id="routeDistance">-</span><br>
                                 <strong>Duration:</strong> <span id="routeDuration">-</span> (walking)
                             </div>
-                            <button id="clearRouteBtn" class="btn btn-sm btn-outline-danger">Clear Route</button>
+                            <div>
+                                <button id="clearRouteBtn" class="btn btn-sm btn-outline-danger">Clear Route</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
             
             <!-- Map Container -->
-            <div id="map"></div>
+            <div style="position: relative;">
+                {% if user.is_authenticated %}
+                <!-- Saved Routes Button -->
+                <button id="savedRoutesBtn" class="saved-routes-btn">
+                    <i class="bi bi-bookmarks"></i> My Routes (<span id="savedRoutesCount">0</span>)
+                </button>
+
+                <!-- Saved Routes Panel -->
+                <div id="savedRoutesPanel" class="saved-routes-panel">
+                    <div class="p-3 border-bottom">
+                        <h6 class="mb-0">My Saved Routes</h6>
+                    </div>
+                    <div id="savedRoutesList">
+                        <div class="text-center text-muted py-4">
+                            No saved routes yet
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div id="map"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -282,7 +379,12 @@
         document.getElementById('selectedBuildingCode').textContent = code;
         document.getElementById('selectedBuildingAddress').textContent = address;
         document.getElementById('selectedBuildingInfo').style.display = 'block';
-        
+
+        // Check if building is favorited (if user is authenticated)
+        {% if user.is_authenticated %}
+        checkFavoriteStatus(id);
+        {% endif %}
+
         // Hide search results
         searchResults.style.display = 'none';
         searchInput.value = `${name} (${code})`;
@@ -324,16 +426,27 @@
             destination: selectedBuilding.location,
             travelMode: google.maps.TravelMode.WALKING
         };
-        
+
         directionsService.route(request, (result, status) => {
             if (status === 'OK') {
                 directionsRenderer.setDirections(result);
-                
+
                 // Display route information
                 const route = result.routes[0].legs[0];
                 document.getElementById('routeDistance').textContent = route.distance.text;
                 document.getElementById('routeDuration').textContent = route.duration.text;
                 document.getElementById('routeInfo').style.display = 'block';
+
+                {% if user.is_authenticated %}
+                // Store current route data and show save button
+                currentRouteData = {
+                    distance_text: route.distance.text,
+                    duration_text: route.duration.text,
+                    distance_value: route.distance.value,
+                    duration_value: route.duration.value
+                };
+                document.getElementById('saveRouteBtn').style.display = 'inline-block';
+                {% endif %}
             } else {
                 alert('Unable to calculate route: ' + status);
             }
@@ -344,6 +457,10 @@
     document.getElementById('clearRouteBtn').addEventListener('click', function() {
         directionsRenderer.setDirections({ routes: [] });
         document.getElementById('routeInfo').style.display = 'none';
+        {% if user.is_authenticated %}
+        document.getElementById('saveRouteBtn').style.display = 'none';
+        currentRouteData = null;
+        {% endif %}
     });
     
     // Close search results when clicking outside
@@ -378,6 +495,310 @@
             { enableHighAccuracy: true, maximumAge: 10000 }
         );
     }
+
+    {% if user.is_authenticated %}
+    // Favorite functionality
+    function checkFavoriteStatus(buildingId) {
+        fetch(`/api/favorites/check/?building_id=${buildingId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateFavoriteIcon(data.is_favorite);
+                }
+            })
+            .catch(error => console.error('Error checking favorite status:', error));
+    }
+
+    function updateFavoriteIcon(isFavorite) {
+        const icon = document.getElementById('favoriteIcon');
+        const btn = document.getElementById('favoriteToggleBtn');
+        if (isFavorite) {
+            icon.classList.remove('bi-star');
+            icon.classList.add('bi-star-fill');
+            btn.title = 'Remove from Favorites';
+        } else {
+            icon.classList.remove('bi-star-fill');
+            icon.classList.add('bi-star');
+            btn.title = 'Add to Favorites';
+        }
+    }
+
+    function toggleFavorite() {
+        if (!selectedBuilding) {
+            return;
+        }
+
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+            || getCookie('csrftoken');
+
+        fetch('/api/favorites/toggle/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                building_id: selectedBuilding.id
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateFavoriteIcon(data.action === 'added');
+                // Show brief notification
+                const message = data.message;
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alertDiv.style.zIndex = '9999';
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(alertDiv);
+                setTimeout(() => alertDiv.remove(), 3000);
+            }
+        })
+        .catch(error => console.error('Error toggling favorite:', error));
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Add event listener for favorite button
+    document.getElementById('favoriteToggleBtn')?.addEventListener('click', toggleFavorite);
+
+    // Saved Routes functionality
+    let savedRoutes = [];
+    let currentRouteData = null;
+
+    // Load saved routes on page load
+    loadSavedRoutes();
+
+    // Toggle saved routes panel
+    document.getElementById('savedRoutesBtn')?.addEventListener('click', function() {
+        const panel = document.getElementById('savedRoutesPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        loadSavedRoutes(); // Refresh the list
+    });
+
+    // Close panel when clicking outside
+    document.addEventListener('click', function(event) {
+        const panel = document.getElementById('savedRoutesPanel');
+        const btn = document.getElementById('savedRoutesBtn');
+        if (panel && btn && !panel.contains(event.target) && !btn.contains(event.target)) {
+            panel.style.display = 'none';
+        }
+    });
+
+    function loadSavedRoutes() {
+        fetch('/api/routes/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    savedRoutes = data.routes;
+                    document.getElementById('savedRoutesCount').textContent = data.count;
+                    displaySavedRoutes(data.routes);
+                }
+            })
+            .catch(error => console.error('Error loading saved routes:', error));
+    }
+
+    function displaySavedRoutes(routes) {
+        const container = document.getElementById('savedRoutesList');
+
+        if (routes.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4">No saved routes yet</div>';
+            return;
+        }
+
+        container.innerHTML = routes.map(route => `
+            <div class="saved-route-item" onclick="loadSavedRoute(${route.id})">
+                <div class="mb-2">
+                    <strong>${route.name}</strong>
+                </div>
+                <div class="small text-muted">
+                    <div><i class="bi bi-geo-alt-fill"></i> From: ${route.origin_name}</div>
+                    <div><i class="bi bi-geo-alt"></i> To: ${route.destination_display}</div>
+                </div>
+                <div class="mt-2">
+                    <span class="badge bg-light text-dark me-1">${route.distance_text}</span>
+                    <span class="badge bg-light text-dark">${route.duration_text}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function loadSavedRoute(routeId) {
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('/api/routes/load/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                route_id: routeId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const route = data.route;
+
+                // Set user location to route origin
+                userLocation = {
+                    lat: route.origin_lat,
+                    lng: route.origin_lng
+                };
+
+                // Update user marker
+                if (userMarker) {
+                    userMarker.setPosition(userLocation);
+                } else {
+                    userMarker = new google.maps.Marker({
+                        position: userLocation,
+                        map: map,
+                        title: route.origin_name,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 10,
+                            fillColor: '#4285F4',
+                            fillOpacity: 1,
+                            strokeColor: 'white',
+                            strokeWeight: 2
+                        }
+                    });
+                }
+
+                // Set selected building
+                selectedBuilding = {
+                    id: route.destination_building_id,
+                    name: route.destination_name,
+                    code: '',
+                    address: '',
+                    location: {
+                        lat: route.destination_lat,
+                        lng: route.destination_lng
+                    }
+                };
+
+                // Update UI
+                document.getElementById('selectedBuildingName').textContent = route.destination_name;
+                document.getElementById('selectedBuildingCode').textContent = '';
+                document.getElementById('selectedBuildingAddress').textContent = '';
+                document.getElementById('selectedBuildingInfo').style.display = 'block';
+
+                // Calculate and display the route
+                calculateRoute();
+
+                // Close the saved routes panel
+                document.getElementById('savedRoutesPanel').style.display = 'none';
+
+                // Show success message
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alertDiv.style.zIndex = '9999';
+                alertDiv.innerHTML = `
+                    Route "${route.name}" loaded successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(alertDiv);
+                setTimeout(() => alertDiv.remove(), 3000);
+            }
+        })
+        .catch(error => console.error('Error loading saved route:', error));
+    }
+
+    // Save Route functionality
+    document.getElementById('saveRouteBtn')?.addEventListener('click', function() {
+        if (!currentRouteData) {
+            alert('Please calculate a route first.');
+            return;
+        }
+
+        const routeName = prompt('Enter a name for this route:');
+        if (!routeName || routeName.trim() === '') {
+            return;
+        }
+
+        saveRoute(routeName.trim());
+    });
+
+    function saveRoute(name) {
+        const csrftoken = getCookie('csrftoken');
+
+        const routeData = {
+            name: name,
+            origin_lat: userLocation.lat,
+            origin_lng: userLocation.lng,
+            origin_name: 'My Location',
+            destination_lat: selectedBuilding.location.lat,
+            destination_lng: selectedBuilding.location.lng,
+            destination_name: selectedBuilding.name,
+            destination_building_id: selectedBuilding.id,
+            distance_text: currentRouteData.distance_text,
+            duration_text: currentRouteData.duration_text,
+            distance_value: currentRouteData.distance_value,
+            duration_value: currentRouteData.duration_value
+        };
+
+        fetch('/api/routes/save/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify(routeData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alertDiv.style.zIndex = '9999';
+                alertDiv.innerHTML = `
+                    ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(alertDiv);
+                setTimeout(() => alertDiv.remove(), 3000);
+
+                // Reload saved routes list
+                loadSavedRoutes();
+            } else {
+                alert(data.error || 'Failed to save route');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving route:', error);
+            alert('An error occurred while saving the route');
+        });
+    }
+
+    // Check if there's a route to load from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const loadRouteId = urlParams.get('load_route');
+    if (loadRouteId) {
+        // Wait for map to initialize
+        setTimeout(() => {
+            loadSavedRoute(parseInt(loadRouteId));
+        }, 1000);
+    }
+    {% endif %}
 </script>
 
 <!-- Load Google Maps API -->

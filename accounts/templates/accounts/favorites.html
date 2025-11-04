@@ -1,0 +1,268 @@
+{% extends 'accounts/base.html' %}
+
+{% block title %}My Favorites - SafeRoute{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body p-5">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h2 class="card-title mb-2">My Favorite Buildings</h2>
+                            <p class="text-muted mb-0">{{ favorites_count }} saved location{{ favorites_count|pluralize }}</p>
+                        </div>
+                        <div>
+                            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary me-2">
+                                <i class="bi bi-arrow-left"></i> Back to Dashboard
+                            </a>
+                            <a href="{% url 'map' %}" class="btn btn-primary">
+                                <i class="bi bi-plus-lg"></i> Add Favorite
+                            </a>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Favorites List -->
+                    {% if favorites %}
+                    <div class="row" id="favoritesList">
+                        {% for favorite in favorites %}
+                        <div class="col-md-6 mb-4" data-favorite-id="{{ favorite.id }}">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div class="flex-grow-1">
+                                            <h5 class="card-title mb-1">
+                                                <i class="bi bi-star-fill text-warning"></i>
+                                                <span class="favorite-display-name">{{ favorite.get_display_name }}</span>
+                                            </h5>
+                                            {% if favorite.custom_name %}
+                                            <p class="text-muted small mb-0">{{ favorite.building.name }} ({{ favorite.building.code }})</p>
+                                            {% else %}
+                                            <span class="badge bg-primary">{{ favorite.building.code }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-link text-muted" type="button" data-bs-toggle="dropdown">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="showRenameModal({{ favorite.id }}, '{{ favorite.get_display_name|escapejs }}'); return false;">
+                                                        <i class="bi bi-pencil"></i> Rename
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item text-danger" href="#" onclick="deleteFavorite({{ favorite.id }}); return false;">
+                                                        <i class="bi bi-trash"></i> Remove
+                                                    </a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <p class="card-text text-muted mb-3">
+                                        <i class="bi bi-geo-alt"></i> {{ favorite.building.address }}
+                                    </p>
+
+                                    {% if favorite.building.description %}
+                                    <p class="card-text small mb-3">{{ favorite.building.description }}</p>
+                                    {% endif %}
+
+                                    <div class="d-flex gap-2">
+                                        <a href="{% url 'map' %}?building={{ favorite.building.id }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-map"></i> View on Map
+                                        </a>
+                                        <a href="{% url 'map' %}?building={{ favorite.building.id }}&directions=true" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-navigation"></i> Get Directions
+                                        </a>
+                                    </div>
+
+                                    <div class="text-muted small mt-3">
+                                        <i class="bi bi-clock"></i> Added {{ favorite.created_at|date:"M d, Y" }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <!-- Empty State -->
+                    <div class="text-center py-5">
+                        <div class="display-1 text-muted mb-4">
+                            <i class="bi bi-star"></i>
+                        </div>
+                        <h4 class="mb-3">No Favorites Yet</h4>
+                        <p class="text-muted mb-4">
+                            Start adding your favorite buildings to access them quickly!
+                        </p>
+                        <a href="{% url 'map' %}" class="btn btn-primary">
+                            <i class="bi bi-plus-lg"></i> Add Your First Favorite
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Modal -->
+<div class="modal fade" id="renameModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Rename Favorite</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="customNameInput" class="form-label">Custom Name</label>
+                    <input type="text" class="form-control" id="customNameInput" placeholder="Enter custom name (leave empty to use building name)">
+                    <div class="form-text">You can give this favorite a custom name for easy identification.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveRename()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+<script>
+    let currentFavoriteId = null;
+
+    function showRenameModal(favoriteId, currentName) {
+        currentFavoriteId = favoriteId;
+        document.getElementById('customNameInput').value = currentName;
+        const modal = new bootstrap.Modal(document.getElementById('renameModal'));
+        modal.show();
+    }
+
+    function saveRename() {
+        if (!currentFavoriteId) return;
+
+        const customName = document.getElementById('customNameInput').value.trim();
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('/api/favorites/rename/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                favorite_id: currentFavoriteId,
+                custom_name: customName
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the display name in the UI
+                const card = document.querySelector(`[data-favorite-id="${currentFavoriteId}"]`);
+                if (card) {
+                    card.querySelector('.favorite-display-name').textContent = data.display_name;
+                }
+
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('renameModal'));
+                modal.hide();
+
+                // Show success message
+                showAlert('success', data.message);
+            } else {
+                showAlert('danger', data.error || 'Failed to rename favorite');
+            }
+        })
+        .catch(error => {
+            console.error('Error renaming favorite:', error);
+            showAlert('danger', 'An error occurred while renaming');
+        });
+    }
+
+    function deleteFavorite(favoriteId) {
+        if (!confirm('Are you sure you want to remove this favorite?')) {
+            return;
+        }
+
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('/api/favorites/delete/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                favorite_id: favoriteId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove card from UI
+                const card = document.querySelector(`[data-favorite-id="${favoriteId}"]`);
+                if (card) {
+                    card.remove();
+                }
+
+                // Update count
+                const countElem = document.querySelector('.text-muted.mb-0');
+                if (countElem) {
+                    const currentCount = parseInt(countElem.textContent);
+                    const newCount = currentCount - 1;
+                    countElem.textContent = `${newCount} saved location${newCount !== 1 ? 's' : ''}`;
+                }
+
+                // Show empty state if no favorites left
+                const favoritesList = document.getElementById('favoritesList');
+                if (favoritesList && favoritesList.children.length === 0) {
+                    location.reload();
+                }
+
+                showAlert('success', data.message);
+            } else {
+                showAlert('danger', data.error || 'Failed to delete favorite');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting favorite:', error);
+            showAlert('danger', 'An error occurred while deleting');
+        });
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 3000);
+    }
+</script>
+{% endblock %}

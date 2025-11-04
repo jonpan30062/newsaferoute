@@ -1,0 +1,242 @@
+{% extends 'accounts/base.html' %}
+
+{% block title %}Saved Routes - SafeRoute{% endblock %}
+
+{% block extra_css %}
+<style>
+    .route-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+    }
+
+    .route-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+
+    .route-icon {
+        font-size: 2.5rem;
+        color: #10b981;
+    }
+
+    .route-info {
+        display: flex;
+        gap: 15px;
+        margin-top: 10px;
+    }
+
+    .info-badge {
+        background: #f8f9fa;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .route-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .empty-state i {
+        font-size: 5rem;
+        color: #ddd;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-2">Saved Routes</h2>
+                    <p class="text-muted">Your frequently used safe routes ({{ saved_routes_count }})</p>
+                </div>
+                <div>
+                    <a href="{% url 'map' %}" class="btn btn-success">
+                        <i class="bi bi-plus-circle"></i> Create New Route
+                    </a>
+                    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if saved_routes_count > 0 %}
+    <div class="row">
+        {% for route in saved_routes %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card route-card h-100" data-route-id="{{ route.id }}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="route-icon">
+                            <i class="bi bi-signpost-split"></i>
+                        </div>
+                        <div class="route-actions">
+                            <button class="btn btn-sm btn-primary load-route-btn" data-route-id="{{ route.id }}" title="Load on Map">
+                                <i class="bi bi-map"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger delete-route-btn" data-route-id="{{ route.id }}" title="Delete Route">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <h5 class="card-title mb-2">{{ route.name }}</h5>
+
+                    <div class="mb-3">
+                        <div class="text-muted small mb-1">
+                            <i class="bi bi-geo-alt-fill text-primary"></i> From: <strong>{{ route.origin_name }}</strong>
+                        </div>
+                        <div class="text-muted small">
+                            <i class="bi bi-geo-alt text-success"></i> To: <strong>{{ route.get_destination_display }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="route-info">
+                        <span class="info-badge">
+                            <i class="bi bi-arrows-move"></i> {{ route.distance_text }}
+                        </span>
+                        <span class="info-badge">
+                            <i class="bi bi-clock"></i> {{ route.duration_text }}
+                        </span>
+                    </div>
+
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            {% if route.last_used %}
+                                Last used: {{ route.last_used|timesince }} ago
+                            {% else %}
+                                Created: {{ route.created_at|timesince }} ago
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-signpost-2"></i>
+        <h4>No Saved Routes Yet</h4>
+        <p class="text-muted mb-4">Start by creating your first route on the map!</p>
+        <a href="{% url 'map' %}" class="btn btn-success btn-lg">
+            <i class="bi bi-map"></i> Go to Map
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load route on map
+    document.querySelectorAll('.load-route-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const routeId = this.getAttribute('data-route-id');
+
+            // Redirect to map with route ID
+            window.location.href = `/map/?load_route=${routeId}`;
+        });
+    });
+
+    // Delete route
+    document.querySelectorAll('.delete-route-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const routeId = this.getAttribute('data-route-id');
+
+            if (confirm('Are you sure you want to delete this route?')) {
+                deleteRoute(routeId);
+            }
+        });
+    });
+
+    function deleteRoute(routeId) {
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('/api/routes/delete/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                route_id: routeId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showAlert('success', data.message);
+
+                // Reload page after 1 second
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showAlert('danger', data.error || 'Failed to delete route');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('danger', 'An error occurred while deleting the route');
+        });
+    }
+
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Make route cards clickable to load on map
+    document.querySelectorAll('.route-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            // Only trigger if clicking on the card itself, not buttons
+            if (!e.target.closest('button')) {
+                const routeId = this.getAttribute('data-route-id');
+                window.location.href = `/map/?load_route=${routeId}`;
+            }
+        });
+    });
+</script>
+{% endblock %}
