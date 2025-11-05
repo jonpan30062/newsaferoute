@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.utils import timezone
-from .models import User, Building, Favorite, SavedRoute, SafetyAlert
+from .models import User, Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern
 
 
 @admin.register(User)
@@ -128,3 +128,105 @@ class SafetyAlertAdmin(admin.ModelAdmin):
         updated = queryset.update(end_date=now)
         self.message_user(request, f"{updated} alert(s) marked as expired.")
     mark_as_expired.short_description = "Mark as expired"
+
+
+@admin.register(SafetyConcern)
+class SafetyConcernAdmin(admin.ModelAdmin):
+    """Admin configuration for SafetyConcern model."""
+    list_display = [
+        'category_display', 'location_address_short', 'user', 'status_display', 
+        'created_at', 'has_photo'
+    ]
+    list_filter = ['category', 'status', 'created_at']
+    search_fields = ['location_address', 'description', 'user__email', 'user__first_name', 'user__last_name']
+    date_hierarchy = 'created_at'
+    readonly_fields = ['created_at', 'updated_at', 'photo_preview']
+    autocomplete_fields = ['user']
+    
+    fieldsets = (
+        ("Concern Information", {
+            "fields": ("category", "description", "location_address", "latitude", "longitude")
+        }),
+        ("Photo", {
+            "fields": ("photo", "photo_preview"),
+            "classes": ("collapse",)
+        }),
+        ("Status & Tracking", {
+            "fields": ("status", "user", "created_at", "updated_at", "resolved_at")
+        }),
+        ("Admin Notes", {
+            "fields": ("admin_notes",),
+            "description": "Internal notes for campus security review"
+        }),
+    )
+    
+    actions = ["mark_as_pending", "mark_as_in_review", "mark_as_resolved", "mark_as_dismissed"]
+    
+    def category_display(self, obj):
+        """Display category with icon."""
+        return obj.get_category_display()
+    category_display.short_description = "Category"
+    
+    def location_address_short(self, obj):
+        """Display shortened location address."""
+        return obj.location_address[:50] + "..." if len(obj.location_address) > 50 else obj.location_address
+    location_address_short.short_description = "Location"
+    
+    def status_display(self, obj):
+        """Display colored status badge."""
+        color_map = {
+            'pending': 'warning',
+            'in_review': 'info',
+            'resolved': 'success',
+            'dismissed': 'secondary',
+        }
+        color = color_map.get(obj.status, 'secondary')
+        return format_html(
+            '<span class="badge bg-{}">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    status_display.short_description = "Status"
+    
+    def has_photo(self, obj):
+        """Display if photo is available."""
+        if obj.photo:
+            return format_html('<span style="color: green;">✓ Yes</span>')
+        return format_html('<span style="color: gray;">✗ No</span>')
+    has_photo.short_description = "Photo"
+    has_photo.boolean = True
+    
+    def photo_preview(self, obj):
+        """Display photo preview in admin."""
+        if obj.photo:
+            return format_html(
+                '<img src="{}" style="max-width: 300px; max-height: 300px; border-radius: 8px;" />',
+                obj.photo.url
+            )
+        return "No photo uploaded"
+    photo_preview.short_description = "Photo Preview"
+    
+    def mark_as_pending(self, request, queryset):
+        """Mark selected concerns as pending."""
+        updated = queryset.update(status='pending')
+        self.message_user(request, f"{updated} concern(s) marked as pending.")
+    mark_as_pending.short_description = "Mark as pending"
+    
+    def mark_as_in_review(self, request, queryset):
+        """Mark selected concerns as in review."""
+        updated = queryset.update(status='in_review')
+        self.message_user(request, f"{updated} concern(s) marked as in review.")
+    mark_as_in_review.short_description = "Mark as in review"
+    
+    def mark_as_resolved(self, request, queryset):
+        """Mark selected concerns as resolved."""
+        now = timezone.now()
+        updated = queryset.update(status='resolved', resolved_at=now)
+        self.message_user(request, f"{updated} concern(s) marked as resolved.")
+    mark_as_resolved.short_description = "Mark as resolved"
+    
+    def mark_as_dismissed(self, request, queryset):
+        """Mark selected concerns as dismissed."""
+        updated = queryset.update(status='dismissed')
+        self.message_user(request, f"{updated} concern(s) marked as dismissed.")
+    mark_as_dismissed.short_description = "Mark as dismissed"

@@ -345,3 +345,122 @@ class SafetyAlert(models.Model):
             raise ValidationError({
                 'address': 'Either address or coordinates must be provided.'
             })
+
+
+class SafetyConcern(models.Model):
+    """
+    Model representing a user-submitted safety concern.
+    Users can report issues like broken lights, unsafe paths, etc.
+    """
+    CATEGORY_CHOICES = [
+        ('broken_light', 'Broken Light'),
+        ('unsafe_path', 'Unsafe Path'),
+        ('obstruction', 'Obstruction'),
+        ('vandalism', 'Vandalism'),
+        ('maintenance', 'Maintenance Issue'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('in_review', 'In Review'),
+        ('resolved', 'Resolved'),
+        ('dismissed', 'Dismissed'),
+    ]
+    
+    # User information
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='safety_concerns',
+        verbose_name="Submitted By"
+    )
+    
+    # Location information
+    location_address = models.TextField(
+        verbose_name="Location Address",
+        help_text="Address or description of the location"
+    )
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name="Latitude",
+        help_text="Auto-filled from GPS if available"
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name="Longitude",
+        help_text="Auto-filled from GPS if available"
+    )
+    
+    # Concern details
+    category = models.CharField(
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        verbose_name="Category"
+    )
+    description = models.TextField(
+        verbose_name="Description",
+        help_text="Detailed description of the safety concern"
+    )
+    photo = models.ImageField(
+        upload_to='safety_concerns/',
+        null=True,
+        blank=True,
+        verbose_name="Photo",
+        help_text="Optional photo of the safety concern"
+    )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="Status"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Submitted At")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Last Updated")
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Resolved At"
+    )
+    
+    # Admin notes
+    admin_notes = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Admin Notes",
+        help_text="Internal notes from campus security"
+    )
+    
+    class Meta:
+        verbose_name = "Safety Concern"
+        verbose_name_plural = "Safety Concerns"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['category', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_category_display()} - {self.location_address[:50]}"
+    
+    def get_status_badge_color(self):
+        """Return Bootstrap badge color class based on status."""
+        color_map = {
+            'pending': 'warning',
+            'in_review': 'info',
+            'resolved': 'success',
+            'dismissed': 'secondary',
+        }
+        return color_map.get(self.status, 'secondary')

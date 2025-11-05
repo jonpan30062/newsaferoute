@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.core.exceptions import ValidationError
-from .models import User
+from .models import User, SafetyConcern
 import re
 
 
@@ -169,3 +169,109 @@ class ProfileUpdateForm(forms.ModelForm):
         if commit:
             user.save()
         return user
+
+
+class SafetyConcernForm(forms.ModelForm):
+    """
+    Form for submitting safety concerns.
+    Supports GPS location auto-fill or manual address entry.
+    """
+    use_gps = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Use Current Location (GPS)",
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'use_gps'
+        }),
+        help_text="Check this to automatically use your current GPS location"
+    )
+    
+    location_address = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter the location address or description (e.g., "Near Engineering Building, Main Walkway")',
+            'rows': 3
+        }),
+        label="Location",
+        help_text="Describe where the safety concern is located"
+    )
+    
+    latitude = forms.DecimalField(
+        required=False,
+        widget=forms.HiddenInput(),
+        max_digits=9,
+        decimal_places=6
+    )
+    
+    longitude = forms.DecimalField(
+        required=False,
+        widget=forms.HiddenInput(),
+        max_digits=9,
+        decimal_places=6
+    )
+    
+    category = forms.ChoiceField(
+        required=True,
+        choices=SafetyConcern.CATEGORY_CHOICES,
+        widget=forms.Select(attrs={
+            'class': 'form-select'
+        }),
+        label="Category"
+    )
+    
+    description = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'placeholder': 'Provide a detailed description of the safety concern...',
+            'rows': 5
+        }),
+        label="Description",
+        help_text="Please provide as much detail as possible"
+    )
+    
+    photo = forms.ImageField(
+        required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': 'image/*'
+        }),
+        label="Photo (Optional)",
+        help_text="Upload a photo if available (JPG, PNG, etc.)"
+    )
+    
+    class Meta:
+        model = SafetyConcern
+        fields = ['location_address', 'latitude', 'longitude', 'category', 'description', 'photo']
+    
+    def clean_description(self):
+        """Validate description is not too short."""
+        description = self.cleaned_data.get('description')
+        if description and len(description.strip()) < 10:
+            raise ValidationError("Please provide a more detailed description (at least 10 characters).")
+        return description
+    
+    def clean_location_address(self):
+        """Validate location address is provided."""
+        location = self.cleaned_data.get('location_address')
+        if not location or len(location.strip()) < 5:
+            raise ValidationError("Please provide a more specific location description (at least 5 characters).")
+        return location
+    
+    def clean_photo(self):
+        """Validate photo file size and type."""
+        photo = self.cleaned_data.get('photo')
+        if photo:
+            # Check file size (max 5MB)
+            if photo.size > 5 * 1024 * 1024:
+                raise ValidationError("Photo file size must be less than 5MB.")
+            
+            # Check file type
+            valid_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+            file_name = photo.name.lower()
+            if not any(file_name.endswith(ext) for ext in valid_extensions):
+                raise ValidationError("Photo must be a valid image file (JPG, PNG, GIF, or WebP).")
+        
+        return photo

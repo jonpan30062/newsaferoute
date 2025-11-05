@@ -5,8 +5,8 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
 from django.db.models import Q
-from .forms import RegistrationForm, LoginForm, ProfileUpdateForm
-from .models import Building, Favorite, SavedRoute, SafetyAlert
+from .forms import RegistrationForm, LoginForm, ProfileUpdateForm, SafetyConcernForm
+from .models import Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern
 
 
 def register_view(request):
@@ -812,3 +812,47 @@ def get_alert_detail_api(request, alert_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@login_required
+def report_safety_concern_view(request):
+    """
+    View for submitting safety concerns.
+    Handles form display and submission with confirmation message.
+    """
+    if request.method == 'POST':
+        form = SafetyConcernForm(request.POST, request.FILES)
+        if form.is_valid():
+            # Create safety concern instance
+            concern = form.save(commit=False)
+            concern.user = request.user
+            concern.save()
+            
+            # Show success message
+            messages.success(
+                request,
+                'Thank you! Your safety concern has been submitted successfully. '
+                'Campus security will review it and take appropriate action.'
+            )
+            
+            # Redirect to confirmation or back to form
+            return redirect('report_safety_concern')
+        else:
+            # Form has errors
+            messages.error(request, 'Please correct the errors below and try again.')
+    else:
+        form = SafetyConcernForm()
+    
+    # Get user's recent submissions for context (optional)
+    recent_concerns = SafetyConcern.objects.filter(user=request.user).order_by('-created_at')[:5]
+    
+    # Add Google Maps API key from settings
+    from django.conf import settings
+    
+    context = {
+        'form': form,
+        'recent_concerns': recent_concerns,
+        'google_maps_api_key': settings.GOOGLE_MAPS_API_KEY,
+    }
+    
+    return render(request, 'accounts/report_safety_concern.html', context)

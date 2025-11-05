@@ -1,0 +1,315 @@
+{% extends 'accounts/base.html' %}
+
+{% block title %}Report Safety Concern - SafeRoute{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+<style>
+    .photo-preview {
+        max-width: 100%;
+        max-height: 300px;
+        border-radius: 8px;
+        margin-top: 10px;
+        display: none;
+    }
+    .photo-preview.show {
+        display: block;
+    }
+    .location-help {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+    .gps-status {
+        font-size: 0.875rem;
+        padding: 8px 12px;
+        border-radius: 5px;
+        margin-top: 10px;
+        display: none;
+    }
+    .gps-status.success {
+        background-color: #d1e7dd;
+        color: #0f5132;
+        border: 1px solid #badbcc;
+    }
+    .gps-status.error {
+        background-color: #f8d7da;
+        color: #842029;
+        border: 1px solid #f5c2c7;
+    }
+    .gps-status.info {
+        background-color: #cff4fc;
+        color: #055160;
+        border: 1px solid #b6effb;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12 col-md-10 col-lg-8 mx-auto">
+            <div class="card">
+                <div class="card-body p-5">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2 class="card-title mb-0">
+                            <i class="bi bi-exclamation-triangle-fill text-warning"></i> Report Safety Concern
+                        </h2>
+                        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-left"></i> Back to Dashboard
+                        </a>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <p class="text-muted mb-4">
+                        Help keep our campus safe! Report safety concerns such as broken lights, 
+                        unsafe paths, obstructions, or other issues. Campus security will review your submission.
+                    </p>
+
+                    <form method="post" enctype="multipart/form-data" novalidate id="safety-concern-form">
+                        {% csrf_token %}
+
+                        <!-- GPS Location Toggle -->
+                        <div class="mb-4">
+                            <div class="form-check">
+                                {{ form.use_gps }}
+                                <label class="form-check-label" for="{{ form.use_gps.id_for_label }}">
+                                    <strong>{{ form.use_gps.label }}</strong>
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">{{ form.use_gps.help_text }}</small>
+                            <div id="gps-status" class="gps-status"></div>
+                        </div>
+
+                        <!-- Location Address -->
+                        <div class="mb-4">
+                            <label for="{{ form.location_address.id_for_label }}" class="form-label fw-bold">
+                                Location <span class="text-danger">*</span>
+                            </label>
+                            {{ form.location_address }}
+                            <div class="location-help">{{ form.location_address.help_text }}</div>
+                            {% if form.location_address.errors %}
+                                <div class="text-danger small mt-1">
+                                    {% for error in form.location_address.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Hidden GPS Coordinates -->
+                        {{ form.latitude }}
+                        {{ form.longitude }}
+
+                        <!-- Category -->
+                        <div class="mb-4">
+                            <label for="{{ form.category.id_for_label }}" class="form-label fw-bold">
+                                Category <span class="text-danger">*</span>
+                            </label>
+                            {{ form.category }}
+                            {% if form.category.errors %}
+                                <div class="text-danger small mt-1">
+                                    {% for error in form.category.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Description -->
+                        <div class="mb-4">
+                            <label for="{{ form.description.id_for_label }}" class="form-label fw-bold">
+                                Description <span class="text-danger">*</span>
+                            </label>
+                            {{ form.description }}
+                            <div class="location-help">{{ form.description.help_text }}</div>
+                            {% if form.description.errors %}
+                                <div class="text-danger small mt-1">
+                                    {% for error in form.description.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Photo Upload -->
+                        <div class="mb-4">
+                            <label for="{{ form.photo.id_for_label }}" class="form-label fw-bold">
+                                {{ form.photo.label }}
+                            </label>
+                            {{ form.photo }}
+                            <div class="location-help">{{ form.photo.help_text }}</div>
+                            {% if form.photo.errors %}
+                                <div class="text-danger small mt-1">
+                                    {% for error in form.photo.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <img id="photo-preview" class="photo-preview" alt="Photo preview">
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-send-fill"></i> Submit Safety Concern
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Recent Submissions -->
+                    {% if recent_concerns %}
+                    <hr class="my-4">
+                    <div class="mt-4">
+                        <h5 class="mb-3">Your Recent Submissions</h5>
+                        <div class="list-group">
+                            {% for concern in recent_concerns %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6 class="mb-1">{{ concern.get_category_display }}</h6>
+                                        <p class="mb-1 text-muted small">{{ concern.location_address|truncatewords:10 }}</p>
+                                        <small class="text-muted">{{ concern.created_at|date:"M d, Y g:i A" }}</small>
+                                    </div>
+                                    <span class="badge bg-{{ concern.get_status_badge_color }}">{{ concern.get_status_display }}</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const useGpsCheckbox = document.getElementById('use_gps');
+    const latitudeField = document.getElementById('id_latitude');
+    const longitudeField = document.getElementById('id_longitude');
+    const locationAddressField = document.getElementById('id_location_address');
+    const gpsStatus = document.getElementById('gps-status');
+    const photoInput = document.getElementById('id_photo');
+    const photoPreview = document.getElementById('photo-preview');
+
+    // Handle GPS location
+    useGpsCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            gpsStatus.className = 'gps-status info';
+            gpsStatus.innerHTML = '<i class="bi bi-info-circle"></i> Requesting location...';
+            gpsStatus.style.display = 'block';
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        latitudeField.value = lat.toFixed(6);
+                        longitudeField.value = lng.toFixed(6);
+                        
+                        // Try to reverse geocode to get address
+                        if (typeof google !== 'undefined' && google.maps) {
+                            const geocoder = new google.maps.Geocoder();
+                            const latlng = { lat: lat, lng: lng };
+                            
+                            geocoder.geocode({ location: latlng }, function(results, status) {
+                                if (status === 'OK' && results[0]) {
+                                    locationAddressField.value = results[0].formatted_address;
+                                    gpsStatus.className = 'gps-status success';
+                                    gpsStatus.innerHTML = '<i class="bi bi-check-circle"></i> Location captured: ' + results[0].formatted_address;
+                                } else {
+                                    gpsStatus.className = 'gps-status success';
+                                    gpsStatus.innerHTML = '<i class="bi bi-check-circle"></i> Location captured (Lat: ' + lat.toFixed(6) + ', Lng: ' + lng.toFixed(6) + ')';
+                                }
+                            });
+                        } else {
+                            gpsStatus.className = 'gps-status success';
+                            gpsStatus.innerHTML = '<i class="bi bi-check-circle"></i> Location captured (Lat: ' + lat.toFixed(6) + ', Lng: ' + lng.toFixed(6) + ')';
+                        }
+                    },
+                    function(error) {
+                        gpsStatus.className = 'gps-status error';
+                        let errorMessage = 'Unable to get your location. ';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage += 'Permission denied. Please enable location access in your browser settings.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage += 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage += 'Location request timed out.';
+                                break;
+                            default:
+                                errorMessage += 'An unknown error occurred.';
+                                break;
+                        }
+                        gpsStatus.innerHTML = '<i class="bi bi-exclamation-circle"></i> ' + errorMessage;
+                        useGpsCheckbox.checked = false;
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                gpsStatus.className = 'gps-status error';
+                gpsStatus.innerHTML = '<i class="bi bi-exclamation-circle"></i> Geolocation is not supported by your browser.';
+                useGpsCheckbox.checked = false;
+            }
+        } else {
+            gpsStatus.style.display = 'none';
+            latitudeField.value = '';
+            longitudeField.value = '';
+        }
+    });
+
+    // Handle photo preview
+    photoInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                photoPreview.src = e.target.result;
+                photoPreview.classList.add('show');
+            };
+            reader.readAsDataURL(file);
+        } else {
+            photoPreview.classList.remove('show');
+        }
+    });
+
+    // Form validation
+    const form = document.getElementById('safety-concern-form');
+    form.addEventListener('submit', function(e) {
+        // Basic client-side validation
+        if (!locationAddressField.value.trim()) {
+            e.preventDefault();
+            alert('Please enter a location address.');
+            return false;
+        }
+        if (!document.getElementById('id_description').value.trim()) {
+            e.preventDefault();
+            alert('Please enter a description.');
+            return false;
+        }
+    });
+});
+
+{% if google_maps_api_key %}
+// Load Google Maps API for geocoding
+(function() {
+    const script = document.createElement('script');
+    script.src = 'https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places';
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+})();
+{% endif %}
+</script>
+{% endblock %}
+
