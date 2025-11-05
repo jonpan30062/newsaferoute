@@ -142,4 +142,4 @@ LOGIN_URL = "/login/"
 # Google Maps API Key
 # Get your API key from: https://console.cloud.google.com/google/maps-apis
 # Store your key in .env file (see .env.example for template)
-GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
+GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', 'AIzaSyBSynlwsgDX_IhvmpXHDEZ1g3UzWqDHmmo')

@@ -6,7 +6,7 @@ from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
 from django.db.models import Q
 from .forms import RegistrationForm, LoginForm, ProfileUpdateForm
-from .models import Building, Favorite, SavedRoute
+from .models import Building, Favorite, SavedRoute, SafetyAlert
 
 
 def register_view(request):
@@ -659,6 +659,154 @@ def delete_saved_route_api(request):
             'success': False,
             'error': 'Invalid JSON data'
         }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def get_alerts_api(request):
+    """
+    API endpoint for fetching active safety alerts.
+    Returns all currently active alerts with optional filtering.
+    """
+    # Get optional query parameters
+    alert_type = request.GET.get('alert_type')
+    severity = request.GET.get('severity')
+    bounds = request.GET.get('bounds')  # Format: "north,south,east,west"
+    
+    # Get all alerts that are currently active
+    alerts = SafetyAlert.objects.filter(is_active=True).select_related('created_by')
+    
+    # Filter by alert type if provided
+    if alert_type:
+        alerts = alerts.filter(alert_type=alert_type)
+    
+    # Filter by severity if provided
+    if severity:
+        alerts = alerts.filter(severity=severity)
+    
+    # Filter by map bounds if provided (optional optimization)
+    if bounds:
+        try:
+            north, south, east, west = map(float, bounds.split(','))
+            alerts = alerts.filter(
+                latitude__lte=north,
+                latitude__gte=south,
+                longitude__lte=east,
+                longitude__gte=west
+            )
+        except (ValueError, TypeError):
+            # Invalid bounds format, ignore it
+            pass
+    
+    # Filter to only currently active alerts (based on dates)
+    active_alerts = [alert for alert in alerts if alert.is_currently_active()]
+    
+    # Format results as JSON
+    results = []
+    for alert in active_alerts:
+        alert_data = {
+            'id': alert.id,
+            'title': alert.title,
+            'description': alert.description,
+            'alert_type': alert.alert_type,
+            'severity': alert.severity,
+            'location_type': alert.location_type,
+            'is_active': alert.is_active,
+            'created_at': alert.created_at.isoformat(),
+            'updated_at': alert.updated_at.isoformat(),
+            'icon_url': alert.get_icon_url(),
+            'color': alert.get_color(),
+        }
+        
+        # Add address if available
+        if alert.address:
+            alert_data['address'] = alert.address
+        
+        # Add coordinates if available (for backwards compatibility)
+        if alert.latitude is not None and alert.longitude is not None:
+            alert_data['latitude'] = float(alert.latitude)
+            alert_data['longitude'] = float(alert.longitude)
+        
+        # Add location-specific data
+        if alert.location_type == 'circle' and alert.radius:
+            alert_data['radius'] = float(alert.radius)
+        
+        if alert.location_type == 'polygon':
+            polygon_coords = alert.get_polygon_coordinates()
+            if polygon_coords:
+                alert_data['polygon_coordinates'] = polygon_coords
+        
+        # Add date information
+        if alert.start_date:
+            alert_data['start_date'] = alert.start_date.isoformat()
+        if alert.end_date:
+            alert_data['end_date'] = alert.end_date.isoformat()
+        
+        results.append(alert_data)
+    
+    return JsonResponse({
+        'success': True,
+        'count': len(results),
+        'alerts': results
+    })
+
+
+def get_alert_detail_api(request, alert_id):
+    """
+    API endpoint to get detailed information about a single alert.
+    """
+    try:
+        alert = SafetyAlert.objects.select_related('created_by').get(id=alert_id)
+        
+        alert_data = {
+            'id': alert.id,
+            'title': alert.title,
+            'description': alert.description,
+            'alert_type': alert.alert_type,
+            'severity': alert.severity,
+            'location_type': alert.location_type,
+            'latitude': float(alert.latitude),
+            'longitude': float(alert.longitude),
+            'is_active': alert.is_active,
+            'created_at': alert.created_at.isoformat(),
+            'updated_at': alert.updated_at.isoformat(),
+            'icon_url': alert.get_icon_url(),
+            'color': alert.get_color(),
+        }
+        
+        if alert.location_type == 'circle' and alert.radius:
+            alert_data['radius'] = float(alert.radius)
+        
+        if alert.location_type == 'polygon':
+            polygon_coords = alert.get_polygon_coordinates()
+            if polygon_coords:
+                alert_data['polygon_coordinates'] = polygon_coords
+        
+        if alert.start_date:
+            alert_data['start_date'] = alert.start_date.isoformat()
+        if alert.end_date:
+            alert_data['end_date'] = alert.end_date.isoformat()
+        
+        if alert.created_by:
+            alert_data['created_by'] = {
+                'id': alert.created_by.id,
+                'email': alert.created_by.email,
+                'full_name': alert.created_by.get_full_name()
+            }
+        
+        return JsonResponse({
+            'success': True,
+            'alert': alert_data
+        })
+        
+    except SafetyAlert.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Alert not found'
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,

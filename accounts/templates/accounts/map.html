@@ -253,10 +253,19 @@
     let selectedBuilding = null;
     let userLocation = null;
     
+    // Safety alerts variables
+    let safetyAlerts = [];
+    let alertMarkers = [];
+    let alertCircles = [];
+    let alertPolygons = [];
+    let alertInfoWindows = [];
+    let currentOpenInfoWindow = null;
+    let alertUpdateInterval = null;
+    
     // Initialize the map
     function initMap() {
-        // Default center (will be updated with user location)
-        const defaultCenter = { lat: 37.871899, lng: -122.258537 };
+        // Default center - Georgia Tech campus (will be updated with user location if available)
+        const defaultCenter = { lat: 33.7756, lng: -84.3963 };
         
         map = new google.maps.Map(document.getElementById('map'), {
             zoom: 15,
@@ -278,6 +287,13 @@
         
         // Get user's current location
         getUserLocation();
+        
+        // Load safety alerts after a short delay to ensure map is ready
+        setTimeout(() => {
+            loadAlerts();
+            // Set up polling for alert updates (every 30 seconds)
+            alertUpdateInterval = setInterval(loadAlerts, 30000);
+        }, 500);
     }
     
     // Get user's current location
@@ -319,89 +335,223 @@
     }
     
     // Search buildings
-    const searchInput = document.getElementById('buildingSearch');
-    const searchResults = document.getElementById('searchResults');
-    let searchTimeout;
+    let searchInput, searchResults, searchTimeout;
     
-    searchInput.addEventListener('input', function() {
-        clearTimeout(searchTimeout);
-        const query = this.value.trim();
+    /**
+     * Escape HTML to prevent XSS (used early for search)
+     */
+    function escapeHtml(text) {
+        if (typeof text !== 'string') return text;
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Initialize search functionality when DOM is ready
+    function initializeSearch() {
+        searchInput = document.getElementById('buildingSearch');
+        searchResults = document.getElementById('searchResults');
         
-        if (query.length < 1) {
-            searchResults.style.display = 'none';
+        if (!searchInput || !searchResults) {
+            console.error('Search elements not found');
             return;
         }
         
-        searchTimeout = setTimeout(() => {
-            fetch(`/api/buildings/search/?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    displaySearchResults(data.buildings);
-                })
-                .catch(error => {
-                    console.error('Search error:', error);
-                });
-        }, 300);
-    });
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (query.length < 1) {
+                searchResults.style.display = 'none';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                fetch(`/api/buildings/search/?q=${encodeURIComponent(query)}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            displaySearchResults(data.buildings);
+                        } else {
+                            console.error('Search API error:', data.error || 'Unknown error');
+                            searchResults.innerHTML = '<div class="search-result-item">Error searching buildings</div>';
+                            searchResults.style.display = 'block';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Search error:', error);
+                        searchResults.innerHTML = '<div class="search-result-item">Error searching buildings</div>';
+                        searchResults.style.display = 'block';
+                    });
+            }, 300);
+        });
+    }
+    
+    // Initialize search when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeSearch);
+    } else {
+        // DOM is already loaded
+        initializeSearch();
+    }
     
     // Display search results
     function displaySearchResults(buildings) {
+        if (!searchResults) return;
+        
         if (buildings.length === 0) {
             searchResults.innerHTML = '<div class="search-result-item">No buildings found</div>';
             searchResults.style.display = 'block';
             return;
         }
         
-        searchResults.innerHTML = buildings.map(building => `
-            <div class="search-result-item" onclick="selectBuilding(${building.id}, '${building.name}', '${building.code}', '${building.address}', ${building.latitude}, ${building.longitude})">
+        // Clear previous results
+        searchResults.innerHTML = '';
+        
+        // Create result items
+        buildings.forEach(building => {
+            const item = document.createElement('div');
+            item.className = 'search-result-item';
+            item.innerHTML = `
                 <div class="building-name">
-                    ${building.name} <span class="building-code">[${building.code}]</span>
+                    ${escapeHtml(building.name)} <span class="building-code">[${escapeHtml(building.code)}]</span>
                 </div>
-                <div class="building-address">${building.address}</div>
-            </div>
-        `).join('');
+                <div class="building-address">${escapeHtml(building.address)}</div>
+            `;
+            item.addEventListener('click', function() {
+                selectBuilding(building.id, building.name, building.code, building.address, building.latitude, building.longitude);
+            });
+            searchResults.appendChild(item);
+        });
         
         searchResults.style.display = 'block';
     }
     
+    // Geocode address using Google Maps Geocoding API
+    function geocodeAddress(address, callback) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: address }, function(results, status) {
+            if (status === 'OK' && results[0]) {
+                const location = results[0].geometry.location;
+                callback({
+                    lat: location.lat(),
+                    lng: location.lng()
+                });
+            } else {
+                console.error('Geocoding failed:', status, address);
+                // Fallback to default GT campus coordinates
+                callback({
+                    lat: 33.7756,
+                    lng: -84.3963
+                });
+            }
+        });
+    }
+    
     // Select a building
     function selectBuilding(id, name, code, address, lat, lng) {
-        selectedBuilding = {
-            id: id,
-            name: name,
-            code: code,
-            address: address,
-            location: { lat: lat, lng: lng }
-        };
+        // Make sure map is initialized
+        if (!map) {
+            console.error('Map not initialized yet');
+            // Wait for map to be ready
+            setTimeout(() => selectBuilding(id, name, code, address, lat, lng), 500);
+            return;
+        }
         
-        // Update UI
-        document.getElementById('selectedBuildingName').textContent = name;
-        document.getElementById('selectedBuildingCode').textContent = code;
-        document.getElementById('selectedBuildingAddress').textContent = address;
-        document.getElementById('selectedBuildingInfo').style.display = 'block';
+        // Update UI first
+        const nameEl = document.getElementById('selectedBuildingName');
+        const codeEl = document.getElementById('selectedBuildingCode');
+        const addressEl = document.getElementById('selectedBuildingAddress');
+        const infoEl = document.getElementById('selectedBuildingInfo');
+        
+        if (nameEl) nameEl.textContent = name;
+        if (codeEl) codeEl.textContent = code;
+        if (addressEl) addressEl.textContent = address;
+        if (infoEl) infoEl.style.display = 'block';
 
         // Check if building is favorited (if user is authenticated)
         {% if user.is_authenticated %}
-        checkFavoriteStatus(id);
+        if (typeof checkFavoriteStatus === 'function') {
+            checkFavoriteStatus(id);
+        }
         {% endif %}
 
         // Hide search results
-        searchResults.style.display = 'none';
-        searchInput.value = `${name} (${code})`;
+        if (searchResults) {
+            searchResults.style.display = 'none';
+        }
+        if (searchInput) {
+            searchInput.value = `${name} (${code})`;
+        }
         
-        // Center map on building
-        map.setCenter(selectedBuilding.location);
-        map.setZoom(16);
+        // Use address to geocode location dynamically
+        // Check if we have valid coordinates first (from database)
+        const latitude = parseFloat(lat);
+        const longitude = parseFloat(lng);
+        const hasValidCoords = !isNaN(latitude) && !isNaN(longitude) && 
+                               latitude >= -90 && latitude <= 90 &&
+                               longitude >= -180 && longitude <= 180 &&
+                               (latitude !== 33.7756 || longitude !== -84.3963); // Not default coordinates
         
-        // Add marker for building
-        new google.maps.Marker({
-            position: selectedBuilding.location,
-            map: map,
-            title: name,
-            icon: {
-                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+        if (hasValidCoords) {
+            // Use coordinates from database
+            displayBuildingOnMap(id, name, code, address, latitude, longitude);
+        } else {
+            // Geocode address dynamically
+            console.log('Geocoding address:', address);
+            geocodeAddress(address, function(location) {
+                displayBuildingOnMap(id, name, code, address, location.lat, location.lng);
+            });
+        }
+    }
+    
+    // Display building on map with given coordinates
+    function displayBuildingOnMap(id, name, code, address, lat, lng) {
+        try {
+            selectedBuilding = {
+                id: id,
+                name: name,
+                code: code,
+                address: address,
+                location: { lat: lat, lng: lng }
+            };
+            
+            // Remove previous building marker if it exists
+            if (window.buildingMarker) {
+                window.buildingMarker.setMap(null);
             }
-        });
+            
+            // Add marker for building
+            window.buildingMarker = new google.maps.Marker({
+                position: selectedBuilding.location,
+                map: map,
+                title: name,
+                icon: {
+                    url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                },
+                animation: google.maps.Animation.DROP,
+                zIndex: 1000
+            });
+            
+            // Center and zoom map on building with animation
+            map.panTo(selectedBuilding.location);
+            map.setZoom(16);
+            
+            console.log('Building displayed on map:', { 
+                name, 
+                code, 
+                address,
+                location: selectedBuilding.location
+            });
+        } catch (error) {
+            console.error('Error displaying building on map:', error);
+            alert(`Error displaying building on map: ${error.message}`);
+        }
     }
     
     // Start route
@@ -799,6 +949,464 @@
         }, 1000);
     }
     {% endif %}
+
+    // ============================================
+    // Safety Alerts Functionality
+    // ============================================
+    
+    /**
+     * Load safety alerts from the API
+     */
+    function loadAlerts() {
+        // Make sure map is initialized before trying to add alerts
+        if (!map) {
+            console.warn('Map not initialized yet, skipping alert load');
+            return;
+        }
+        
+        fetch('/api/alerts/')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    refreshAlertDisplay(data.alerts);
+                } else {
+                    console.error('Error loading alerts:', data.error || 'Unknown error');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading alerts:', error);
+                // Don't break the map if alerts fail to load
+            });
+    }
+    
+    /**
+     * Refresh alert display - efficiently updates alerts without reloading everything
+     */
+    function refreshAlertDisplay(newAlerts) {
+        // Track current alert IDs
+        const currentAlertIds = new Set(safetyAlerts.map(a => a.id));
+        const newAlertIds = new Set(newAlerts.map(a => a.id));
+        
+        // Remove alerts that are no longer active
+        const alertsToRemove = safetyAlerts.filter(a => !newAlertIds.has(a.id));
+        alertsToRemove.forEach(alert => {
+            removeAlert(alert.id);
+        });
+        
+        // Add new alerts
+        const alertsToAdd = newAlerts.filter(a => !currentAlertIds.has(a.id));
+        alertsToAdd.forEach(alert => {
+            addAlert(alert);
+        });
+        
+        // Update existing alerts if they changed (check updated_at timestamp)
+        const existingAlerts = safetyAlerts.filter(a => newAlertIds.has(a.id));
+        existingAlerts.forEach(existingAlert => {
+            const updatedAlert = newAlerts.find(a => a.id === existingAlert.id);
+            if (updatedAlert && updatedAlert.updated_at !== existingAlert.updated_at) {
+                // Alert was updated, remove and re-add
+                removeAlert(existingAlert.id);
+                addAlert(updatedAlert);
+            }
+        });
+        
+        // Update the alerts array
+        safetyAlerts = newAlerts;
+    }
+    
+    /**
+     * Geocode an address for an alert
+     */
+    function geocodeAlertAddress(alert, callback) {
+        if (!alert.address) {
+            console.error('No address provided for alert:', alert);
+            callback(null);
+            return;
+        }
+        
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: alert.address }, function(results, status) {
+            if (status === 'OK' && results[0]) {
+                const location = results[0].geometry.location;
+                callback({
+                    lat: location.lat(),
+                    lng: location.lng()
+                });
+            } else {
+                console.error('Geocoding failed for alert:', alert.title, status, alert.address);
+                callback(null);
+            }
+        });
+    }
+    
+    /**
+     * Add a new alert to the map
+     */
+    function addAlert(alert) {
+        // Make sure map is initialized
+        if (!map) {
+            console.warn('Cannot add alert - map not initialized');
+            return;
+        }
+        
+        try {
+            // Create info window content
+            const infoContent = createAlertInfoWindow(alert);
+            const infoWindow = new google.maps.InfoWindow({
+                content: infoContent
+            });
+            
+            alertInfoWindows.push(infoWindow);
+            
+            // Get coordinates - either from alert data or geocode from address
+            let coordinates = null;
+            
+            if (alert.latitude !== undefined && alert.longitude !== undefined && 
+                alert.latitude !== null && alert.longitude !== null) {
+                // Use provided coordinates
+                coordinates = {
+                    lat: parseFloat(alert.latitude),
+                    lng: parseFloat(alert.longitude)
+                };
+                
+                // Validate coordinates
+                if (isNaN(coordinates.lat) || isNaN(coordinates.lng) ||
+                    coordinates.lat < -90 || coordinates.lat > 90 ||
+                    coordinates.lng < -180 || coordinates.lng > 180) {
+                    coordinates = null;
+                }
+            }
+            
+            // If no valid coordinates, geocode from address
+            if (!coordinates && alert.address) {
+                geocodeAlertAddress(alert, function(location) {
+                    if (location) {
+                        alert.latitude = location.lat;
+                        alert.longitude = location.lng;
+                        displayAlertOnMap(alert, infoWindow, location);
+                    } else {
+                        console.warn('Failed to geocode alert:', alert.title);
+                    }
+                });
+                return; // Will continue after geocoding
+            }
+            
+            // Display alert with coordinates
+            if (coordinates) {
+                displayAlertOnMap(alert, infoWindow, coordinates);
+            } else {
+                console.error('No coordinates or address for alert:', alert);
+            }
+        } catch (error) {
+            console.error('Error adding alert to map:', error, alert);
+        }
+    }
+    
+    /**
+     * Display alert on map with given coordinates
+     */
+    function displayAlertOnMap(alert, infoWindow, coordinates) {
+        try {
+            const position = { lat: coordinates.lat, lng: coordinates.lng };
+            
+            // Display based on location type
+            if (alert.location_type === 'point') {
+                displayPointAlert(alert, infoWindow, position);
+            } else if (alert.location_type === 'circle') {
+                displayCircleAlert(alert, infoWindow, position);
+            } else if (alert.location_type === 'polygon') {
+                displayPolygonAlert(alert, infoWindow, position);
+            }
+        } catch (error) {
+            console.error('Error displaying alert on map:', error, alert);
+        }
+    }
+    
+    /**
+     * Remove an alert from the map
+     */
+    function removeAlert(alertId) {
+        // Remove marker
+        const markerIndex = alertMarkers.findIndex(m => m.alertId === alertId);
+        if (markerIndex !== -1) {
+            alertMarkers[markerIndex].marker.setMap(null);
+            alertMarkers.splice(markerIndex, 1);
+        }
+        
+        // Remove circle
+        const circleIndex = alertCircles.findIndex(c => c.alertId === alertId);
+        if (circleIndex !== -1) {
+            alertCircles[circleIndex].circle.setMap(null);
+            alertCircles.splice(circleIndex, 1);
+        }
+        
+        // Remove polygon
+        const polygonIndex = alertPolygons.findIndex(p => p.alertId === alertId);
+        if (polygonIndex !== -1) {
+            alertPolygons[polygonIndex].polygon.setMap(null);
+            alertPolygons.splice(polygonIndex, 1);
+        }
+        
+        // Close info window if it's open for this alert
+        alertInfoWindows.forEach((infoWindow, index) => {
+            if (infoWindow.getContent() && infoWindow.getContent().includes(`alert-${alertId}`)) {
+                infoWindow.close();
+                alertInfoWindows.splice(index, 1);
+            }
+        });
+        
+        // Remove from alerts array
+        safetyAlerts = safetyAlerts.filter(a => a.id !== alertId);
+    }
+    
+    /**
+     * Display a point alert as a marker
+     */
+    function displayPointAlert(alert, infoWindow, position) {
+        // Create custom icon with color based on severity
+        const icon = {
+            url: alert.icon_url || 'http://maps.google.com/mapfiles/ms/icons/alert.png',
+            scaledSize: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 16)
+        };
+        
+        const marker = new google.maps.Marker({
+            position: position,
+            map: map,
+            title: alert.title,
+            icon: icon,
+            zIndex: 1000 + (alert.severity === 'critical' ? 100 : alert.severity === 'high' ? 50 : 0)
+        });
+        
+        // Store marker with alert ID
+        alertMarkers.push({ alertId: alert.id, marker: marker });
+        
+        // Add click listener to open info window
+        marker.addListener('click', function() {
+            // Close any currently open info window
+            if (currentOpenInfoWindow) {
+                currentOpenInfoWindow.close();
+            }
+            infoWindow.open(map, marker);
+            currentOpenInfoWindow = infoWindow;
+        });
+    }
+    
+    /**
+     * Display a circle alert as a circle overlay
+     */
+    function displayCircleAlert(alert, infoWindow, position) {
+        // Convert radius from meters if provided, or use 0.2 miles (321.8688 meters)
+        let radiusMeters = alert.radius ? parseFloat(alert.radius) : 321.8688; // 0.2 miles default
+        
+        const circle = new google.maps.Circle({
+            strokeColor: alert.color,
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: alert.color,
+            fillOpacity: 0.35,
+            map: map,
+            center: position,
+            radius: radiusMeters,
+            zIndex: 500 + (alert.severity === 'critical' ? 100 : alert.severity === 'high' ? 50 : 0)
+        });
+        
+        // Store circle with alert ID
+        alertCircles.push({ alertId: alert.id, circle: circle });
+        
+        // Add click listener to open info window
+        circle.addListener('click', function(event) {
+            // Close any currently open info window
+            if (currentOpenInfoWindow) {
+                currentOpenInfoWindow.close();
+            }
+            infoWindow.setPosition(position);
+            infoWindow.open(map);
+            currentOpenInfoWindow = infoWindow;
+        });
+        
+        // Also add a marker at the center for better visibility
+        const marker = new google.maps.Marker({
+            position: position,
+            map: map,
+            title: alert.title,
+            icon: {
+                url: alert.icon_url || 'http://maps.google.com/mapfiles/ms/icons/alert.png',
+                scaledSize: new google.maps.Size(24, 24),
+                anchor: new google.maps.Point(12, 12)
+            },
+            zIndex: 1000
+        });
+        
+        alertMarkers.push({ alertId: alert.id, marker: marker });
+        
+        marker.addListener('click', function() {
+            if (currentOpenInfoWindow) {
+                currentOpenInfoWindow.close();
+            }
+            infoWindow.open(map, marker);
+            currentOpenInfoWindow = infoWindow;
+        });
+    }
+    
+    /**
+     * Display a polygon alert as a polygon overlay
+     */
+    function displayPolygonAlert(alert, infoWindow, position) {
+        if (!alert.polygon_coordinates || alert.polygon_coordinates.length < 3) {
+            console.error('Invalid polygon coordinates for alert', alert.id);
+            return;
+        }
+        
+        // Convert coordinates to Google Maps LatLng format
+        const path = alert.polygon_coordinates.map(coord => {
+            return { lat: coord[0], lng: coord[1] };
+        });
+        
+        const polygon = new google.maps.Polygon({
+            paths: path,
+            strokeColor: alert.color,
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: alert.color,
+            fillOpacity: 0.35,
+            map: map,
+            zIndex: 500 + (alert.severity === 'critical' ? 100 : alert.severity === 'high' ? 50 : 0)
+        });
+        
+        // Store polygon with alert ID
+        alertPolygons.push({ alertId: alert.id, polygon: polygon });
+        
+        // Add click listener to open info window
+        polygon.addListener('click', function(event) {
+            // Close any currently open info window
+            if (currentOpenInfoWindow) {
+                currentOpenInfoWindow.close();
+            }
+            infoWindow.setPosition(position);
+            infoWindow.open(map);
+            currentOpenInfoWindow = infoWindow;
+        });
+        
+        // Also add a marker at the center for better visibility
+        const marker = new google.maps.Marker({
+            position: position,
+            map: map,
+            title: alert.title,
+            icon: {
+                url: alert.icon_url || 'http://maps.google.com/mapfiles/ms/icons/alert.png',
+                scaledSize: new google.maps.Size(24, 24),
+                anchor: new google.maps.Point(12, 12)
+            },
+            zIndex: 1000
+        });
+        
+        alertMarkers.push({ alertId: alert.id, marker: marker });
+        
+        marker.addListener('click', function() {
+            if (currentOpenInfoWindow) {
+                currentOpenInfoWindow.close();
+            }
+            infoWindow.open(map, marker);
+            currentOpenInfoWindow = infoWindow;
+        });
+    }
+    
+    /**
+     * Create info window content for an alert
+     */
+    function createAlertInfoWindow(alert) {
+        const severityLabels = {
+            'low': 'Low',
+            'medium': 'Medium',
+            'high': 'High',
+            'critical': 'Critical'
+        };
+        
+        const typeLabels = {
+            'construction': 'Construction',
+            'emergency': 'Emergency',
+            'maintenance': 'Maintenance',
+            'hazard': 'Hazard',
+            'other': 'Other'
+        };
+        
+        // Format timestamp
+        const createdDate = new Date(alert.created_at);
+        const timeAgo = getTimeAgo(createdDate);
+        
+        // Build HTML content
+        let content = `
+            <div class="alert-info-window" id="alert-${alert.id}" style="max-width: 300px;">
+                <div style="margin-bottom: 10px;">
+                    <h4 style="margin: 0 0 5px 0; color: ${alert.color};">
+                        ${escapeHtml(alert.title)}
+                    </h4>
+                    <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+                        <span style="background-color: ${alert.color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px;">
+                            ${typeLabels[alert.alert_type] || 'Other'}
+                        </span>
+                        <span style="background-color: ${alert.color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px;">
+                            ${severityLabels[alert.severity] || 'Medium'}
+                        </span>
+                    </div>
+                </div>
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #333;">
+                    ${escapeHtml(alert.description)}
+                </p>
+                <div style="font-size: 11px; color: #666; border-top: 1px solid #eee; padding-top: 8px;">
+                    <i class="bi bi-clock"></i> Posted ${timeAgo}
+                </div>
+            </div>
+        `;
+        
+        return content;
+    }
+    
+    /**
+     * Get time ago string (e.g., "2 hours ago")
+     */
+    function getTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        
+        if (seconds < 60) {
+            return 'just now';
+        }
+        
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) {
+            return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+        }
+        
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) {
+            return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+        }
+        
+        const days = Math.floor(hours / 24);
+        if (days < 7) {
+            return `${days} day${days !== 1 ? 's' : ''} ago`;
+        }
+        
+        const weeks = Math.floor(days / 7);
+        if (weeks < 4) {
+            return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
+        }
+        
+        const months = Math.floor(days / 30);
+        if (months < 12) {
+            return `${months} month${months !== 1 ? 's' : ''} ago`;
+        }
+        
+        const years = Math.floor(days / 365);
+        return `${years} year${years !== 1 ? 's' : ''} ago`;
+    }
+    
 </script>
 
 <!-- Load Google Maps API -->

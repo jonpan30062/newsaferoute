@@ -1,5 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
+import json
 
 
 class User(AbstractUser):
@@ -122,3 +124,224 @@ class SavedRoute(models.Model):
         if self.destination_building:
             return f"{self.destination_building.name} ({self.destination_building.code})"
         return self.destination_name
+
+
+class SafetyAlert(models.Model):
+    """
+    Model representing a safety alert (construction, emergency, etc.)
+    that can be displayed on the map as icons or colored zones.
+    """
+    ALERT_TYPE_CHOICES = [
+        ('construction', 'Construction'),
+        ('emergency', 'Emergency'),
+        ('maintenance', 'Maintenance'),
+        ('hazard', 'Hazard'),
+        ('other', 'Other'),
+    ]
+    
+    SEVERITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+    
+    LOCATION_TYPE_CHOICES = [
+        ('point', 'Point'),
+        ('circle', 'Circle'),
+        ('polygon', 'Polygon'),
+    ]
+    
+    title = models.CharField(max_length=255, verbose_name="Alert Title")
+    description = models.TextField(verbose_name="Description")
+    address = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Address",
+        help_text="Address for geocoding (optional if coordinates are provided)"
+    )
+    alert_type = models.CharField(
+        max_length=20,
+        choices=ALERT_TYPE_CHOICES,
+        default='other',
+        verbose_name="Alert Type"
+    )
+    severity = models.CharField(
+        max_length=20,
+        choices=SEVERITY_CHOICES,
+        default='medium',
+        verbose_name="Severity"
+    )
+    location_type = models.CharField(
+        max_length=20,
+        choices=LOCATION_TYPE_CHOICES,
+        default='point',
+        verbose_name="Location Type"
+    )
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name="Latitude",
+        help_text="Optional - will be geocoded from address if not provided"
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name="Longitude",
+        help_text="Optional - will be geocoded from address if not provided"
+    )
+    radius = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Radius (meters)",
+        help_text="Required for circle location type"
+    )
+    polygon_coordinates = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Polygon Coordinates",
+        help_text="JSON array of [lat, lng] pairs: [[lat1, lng1], [lat2, lng2], ...]"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Active")
+    start_date = models.DateTimeField(null=True, blank=True, verbose_name="Start Date")
+    end_date = models.DateTimeField(null=True, blank=True, verbose_name="End Date")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_alerts',
+        verbose_name="Created By"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Safety Alert"
+        verbose_name_plural = "Safety Alerts"
+        ordering = ['-severity', '-created_at']
+        indexes = [
+            models.Index(fields=['is_active', 'severity']),
+            models.Index(fields=['alert_type', 'is_active']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} ({self.get_alert_type_display()})"
+    
+    def is_currently_active(self):
+        """Check if alert is currently active based on dates and is_active flag."""
+        if not self.is_active:
+            return False
+        
+        now = timezone.now()
+        
+        if self.start_date and now < self.start_date:
+            return False
+        
+        if self.end_date and now > self.end_date:
+            return False
+        
+        return True
+    
+    def get_color(self):
+        """Return hex color code based on severity."""
+        color_map = {
+            'low': '#fbbf24',      # Yellow
+            'medium': '#f59e0b',   # Orange
+            'high': '#ef4444',     # Red
+            'critical': '#dc2626',  # Dark Red
+        }
+        return color_map.get(self.severity, '#f59e0b')
+    
+    def get_icon_url(self):
+        """Return appropriate marker icon based on alert_type and severity."""
+        # Use Google Maps default icons with custom colors
+        # For now, we'll use colored markers based on severity
+        # This can be enhanced with custom icons later
+        icon_map = {
+            'construction': 'http://maps.google.com/mapfiles/ms/icons/construction.png',
+            'emergency': 'http://maps.google.com/mapfiles/ms/icons/alert.png',
+            'maintenance': 'http://maps.google.com/mapfiles/ms/icons/tools.png',
+            'hazard': 'http://maps.google.com/mapfiles/ms/icons/warning.png',
+            'other': 'http://maps.google.com/mapfiles/ms/icons/info.png',
+        }
+        return icon_map.get(self.alert_type, icon_map['other'])
+    
+    def get_polygon_coordinates(self):
+        """Parse and return polygon coordinates as list (if polygon type)."""
+        if self.location_type != 'polygon' or not self.polygon_coordinates:
+            return None
+        
+        try:
+            return json.loads(self.polygon_coordinates)
+        except json.JSONDecodeError:
+            return None
+    
+    def clean(self):
+        """Validate model fields."""
+        from django.core.exceptions import ValidationError
+        
+        # Validate circle location type has radius
+        if self.location_type == 'circle' and not self.radius:
+            raise ValidationError({
+                'radius': 'Radius is required for circle location type.'
+            })
+        
+        # Validate polygon location type has coordinates
+        if self.location_type == 'polygon':
+            if not self.polygon_coordinates:
+                raise ValidationError({
+                    'polygon_coordinates': 'Polygon coordinates are required for polygon location type.'
+                })
+            # Validate JSON format
+            try:
+                coords = json.loads(self.polygon_coordinates)
+                if not isinstance(coords, list) or len(coords) < 3:
+                    raise ValidationError({
+                        'polygon_coordinates': 'Polygon must have at least 3 coordinate pairs.'
+                    })
+            except json.JSONDecodeError:
+                raise ValidationError({
+                    'polygon_coordinates': 'Invalid JSON format for polygon coordinates.'
+                })
+        
+        # Validate date range
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValidationError({
+                'end_date': 'End date must be after start date.'
+            })
+        
+        # Validate coordinates if provided
+        if self.latitude is not None:
+            try:
+                if not (-90 <= float(self.latitude) <= 90):
+                    raise ValidationError({
+                        'latitude': 'Latitude must be between -90 and 90.'
+                    })
+            except (ValueError, TypeError):
+                raise ValidationError({
+                    'latitude': 'Invalid latitude value.'
+                })
+        
+        if self.longitude is not None:
+            try:
+                if not (-180 <= float(self.longitude) <= 180):
+                    raise ValidationError({
+                        'longitude': 'Longitude must be between -180 and 180.'
+                    })
+            except (ValueError, TypeError):
+                raise ValidationError({
+                    'longitude': 'Invalid longitude value.'
+                })
+        
+        # Ensure either address or coordinates are provided
+        if not self.address and (self.latitude is None or self.longitude is None):
+            raise ValidationError({
+                'address': 'Either address or coordinates must be provided.'
+            })

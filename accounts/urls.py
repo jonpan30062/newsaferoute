@@ -20,4 +20,6 @@ urlpatterns = [
     path('api/routes/', views.get_saved_routes_api, name='get_saved_routes'),
     path('api/routes/load/', views.load_saved_route_api, name='load_saved_route'),
     path('api/routes/delete/', views.delete_saved_route_api, name='delete_saved_route'),
+    path('api/alerts/', views.get_alerts_api, name='get_alerts'),
+    path('api/alerts/<int:alert_id>/', views.get_alert_detail_api, name='get_alert_detail'),
 ]
