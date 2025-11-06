@@ -353,11 +353,14 @@ class SafetyConcern(models.Model):
     Users can report issues like broken lights, unsafe paths, etc.
     """
     CATEGORY_CHOICES = [
+        ('construction', 'Construction/Roadwork'),
+        ('emergency', 'Emergency Situation'),
+        ('maintenance', 'Maintenance Issue'),
+        ('hazard', 'Safety Hazard'),
         ('broken_light', 'Broken Light'),
         ('unsafe_path', 'Unsafe Path'),
         ('obstruction', 'Obstruction'),
         ('vandalism', 'Vandalism'),
-        ('maintenance', 'Maintenance Issue'),
         ('other', 'Other'),
     ]
     

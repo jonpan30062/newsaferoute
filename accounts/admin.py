@@ -178,11 +178,14 @@ class SafetyConcernAdmin(admin.ModelAdmin):
     def category_display(self, obj):
         """Display category with icon."""
         icons = {
+            'construction': '🚧',
+            'emergency': '🚨',
+            'maintenance': '🔧',
+            'hazard': '⚠️',
             'broken_light': '💡',
             'unsafe_path': '⚠️',
             'obstruction': '🚧',
             'vandalism': '🔨',
-            'maintenance': '🔧',
             'other': '📋',
         }
         icon = icons.get(obj.category, '📋')
@@ -317,11 +320,14 @@ class SafetyConcernAdmin(admin.ModelAdmin):
             
             # Map concern category to alert type
             category_to_alert_type = {
+                'construction': 'construction',
+                'emergency': 'emergency',
+                'maintenance': 'maintenance',
+                'hazard': 'hazard',
                 'broken_light': 'maintenance',
                 'unsafe_path': 'hazard',
                 'obstruction': 'hazard',
                 'vandalism': 'other',
-                'maintenance': 'maintenance',
                 'other': 'other',
             }
             
@@ -374,11 +380,14 @@ class SafetyConcernAdmin(admin.ModelAdmin):
             
             # Map concern category to alert type
             category_to_alert_type = {
+                'construction': 'construction',
+                'emergency': 'emergency',
+                'maintenance': 'maintenance',
+                'hazard': 'hazard',
                 'broken_light': 'maintenance',
                 'unsafe_path': 'hazard',
                 'obstruction': 'hazard',
                 'vandalism': 'other',
-                'maintenance': 'maintenance',
                 'other': 'other',
             }
             
