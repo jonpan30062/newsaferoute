@@ -177,9 +177,11 @@ def building_search_api(request):
         # Return all buildings if no query provided
         buildings = Building.objects.all()[:20]  # Limit to 20 results
     else:
-        # Search by name or code (partial match, case-insensitive)
+        # Search by name, code, or address (partial match, case-insensitive)
         buildings = Building.objects.filter(
-            Q(name__icontains=query) | Q(code__icontains=query)
+            Q(name__icontains=query) | 
+            Q(code__icontains=query) | 
+            Q(address__icontains=query)
         )[:20]
     
     # Format results as JSON

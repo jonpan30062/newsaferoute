@@ -44,8 +44,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Error getting buildings: {e}'))
             return
 
-        # 0.2 miles in meters = 321.8688 meters
-        CIRCLE_RADIUS_METERS = 321.8688
+        # 250 feet in meters = 76.2 meters
+        CIRCLE_RADIUS_METERS = 76.2
         
         # Sample safety alerts data using GT building addresses (no coordinates)
         alerts_data = [

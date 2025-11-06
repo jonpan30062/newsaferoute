@@ -1201,8 +1201,8 @@
      * Display a circle alert as a circle overlay
      */
     function displayCircleAlert(alert, infoWindow, position) {
-        // Convert radius from meters if provided, or use 0.2 miles (321.8688 meters)
-        let radiusMeters = alert.radius ? parseFloat(alert.radius) : 321.8688; // 0.2 miles default
+        // Convert radius from meters if provided, or use 250 feet (76.2 meters)
+        let radiusMeters = alert.radius ? parseFloat(alert.radius) : 76.2; // 250 feet default
         
         const circle = new google.maps.Circle({
             strokeColor: alert.color,

@@ -325,16 +325,19 @@ class SafetyConcernAdmin(admin.ModelAdmin):
                 'other': 'other',
             }
             
-            # Create SafetyAlert from the concern
+            # Create SafetyAlert from the concern as a circle (250 feet radius)
+            # 250 feet in meters = 76.2 meters
+            CIRCLE_RADIUS_METERS = 76.2
             alert = SafetyAlert.objects.create(
                 title=f"{concern.get_category_display()} - {concern.location_address[:50]}",
                 description=concern.description,
                 address=concern.location_address,
                 alert_type=category_to_alert_type.get(concern.category, 'other'),
                 severity='medium',
-                location_type='point',
+                location_type='circle',
                 latitude=concern.latitude,
                 longitude=concern.longitude,
+                radius=CIRCLE_RADIUS_METERS,
                 is_active=True,
                 created_by=request.user
             )
@@ -379,16 +382,19 @@ class SafetyConcernAdmin(admin.ModelAdmin):
                 'other': 'other',
             }
             
-            # Create SafetyAlert from the concern
+            # Create SafetyAlert from the concern as a circle (250 feet radius)
+            # 250 feet in meters = 76.2 meters
+            CIRCLE_RADIUS_METERS = 76.2
             alert = SafetyAlert.objects.create(
                 title=f"{concern.get_category_display()} - {concern.location_address[:50]}",
                 description=concern.description,
                 address=concern.location_address,
                 alert_type=category_to_alert_type.get(concern.category, 'other'),
                 severity='medium',  # Default to medium, admin can adjust
-                location_type='point',
+                location_type='circle',
                 latitude=concern.latitude,
                 longitude=concern.longitude,
+                radius=CIRCLE_RADIUS_METERS,
                 is_active=True,
                 created_by=request.user
             )

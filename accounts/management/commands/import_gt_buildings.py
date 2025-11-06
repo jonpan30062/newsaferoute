@@ -131,6 +131,13 @@ class Command(BaseCommand):
                     words = building_name.split()
                     code = ''.join([w[0].upper() for w in words[:3]])[:10]
                 
+                # Ensure code is unique - if it already exists, append a number
+                original_code = code
+                counter = 1
+                while Building.objects.filter(code=code).exclude(name=building_name).exists():
+                    code = f"{original_code}{counter}"
+                    counter += 1
+                
                 # Create description
                 description = f"Building Number: {building_number}" if building_number else ""
                 
@@ -142,11 +149,12 @@ class Command(BaseCommand):
                     latitude = 33.7756
                     longitude = -84.3963
                 
-                # Create or update building
+                # Create or update building using name as unique identifier
+                # This ensures all buildings are imported even if codes might duplicate
                 building, created = Building.objects.update_or_create(
-                    code=code,
+                    name=building_name,
                     defaults={
-                        'name': building_name,
+                        'code': code,
                         'address': full_address,
                         'latitude': latitude,
                         'longitude': longitude,
