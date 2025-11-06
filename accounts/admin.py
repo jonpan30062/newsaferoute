@@ -2,6 +2,9 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.utils import timezone
+from django.urls import path
+from django.shortcuts import redirect
+from django.contrib import messages
 from .models import User, Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern
 
 
@@ -140,10 +143,14 @@ class SafetyConcernAdmin(admin.ModelAdmin):
     list_filter = ['category', 'status', 'created_at']
     search_fields = ['location_address', 'description', 'user__email', 'user__first_name', 'user__last_name']
     date_hierarchy = 'created_at'
-    readonly_fields = ['created_at', 'updated_at', 'photo_preview']
+    readonly_fields = ['created_at', 'updated_at', 'photo_preview', 'approve_button']
     autocomplete_fields = ['user']
     
     fieldsets = (
+        ("Quick Actions", {
+            "fields": ("approve_button",),
+            "description": "Click to approve this concern and publish as a Safety Alert on the map"
+        }),
         ("Concern Information", {
             "fields": ("category", "description", "location_address", "latitude", "longitude")
         }),
@@ -160,7 +167,7 @@ class SafetyConcernAdmin(admin.ModelAdmin):
         }),
     )
     
-    actions = ["mark_as_pending", "mark_as_in_review", "mark_as_resolved", "mark_as_dismissed"]
+    actions = ["approve_and_create_alert", "mark_as_pending", "mark_as_in_review", "mark_as_resolved", "mark_as_dismissed"]
     
     def category_display(self, obj):
         """Display category with icon."""
@@ -194,7 +201,6 @@ class SafetyConcernAdmin(admin.ModelAdmin):
             return format_html('<span style="color: green;">✓ Yes</span>')
         return format_html('<span style="color: gray;">✗ No</span>')
     has_photo.short_description = "Photo"
-    has_photo.boolean = True
     
     def photo_preview(self, obj):
         """Display photo preview in admin."""
@@ -205,6 +211,147 @@ class SafetyConcernAdmin(admin.ModelAdmin):
             )
         return "No photo uploaded"
     photo_preview.short_description = "Photo Preview"
+    
+    def approve_button(self, obj):
+        """Display approve button if concern is pending."""
+        if obj.pk and obj.status == 'pending':
+            return format_html(
+                '<a class="button" href="/admin/accounts/safetyconcern/{}/approve/" '
+                'style="background: #417690; color: white; padding: 10px 20px; '
+                'text-decoration: none; border-radius: 5px; display: inline-block; '
+                'font-weight: bold;">'
+                '✓ Approve & Create Safety Alert on Map</a>',
+                obj.pk
+            )
+        elif obj.status == 'resolved':
+            return format_html(
+                '<div style="color: green; font-weight: bold;">✓ Already approved and published</div>'
+            )
+        else:
+            return format_html(
+                '<div style="color: gray;">Concern status: {}</div>',
+                obj.get_status_display()
+            )
+    approve_button.short_description = "Approve This Concern"
+    
+    def get_urls(self):
+        """Add custom URL for approving individual concerns."""
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:concern_id>/approve/', self.admin_site.admin_view(self.approve_concern_view), name='safetyconcern_approve'),
+        ]
+        return custom_urls + urls
+    
+    def approve_concern_view(self, request, concern_id):
+        """Custom view to approve a single concern."""
+        try:
+            concern = SafetyConcern.objects.get(pk=concern_id)
+            
+            # Check if coordinates are available
+            if not concern.latitude or not concern.longitude:
+                messages.error(request, "Cannot approve: Missing GPS coordinates.")
+                return redirect('admin:accounts_safetyconcern_change', concern_id)
+            
+            # Map concern category to alert type
+            category_to_alert_type = {
+                'broken_light': 'maintenance',
+                'unsafe_path': 'hazard',
+                'obstruction': 'hazard',
+                'vandalism': 'other',
+                'maintenance': 'maintenance',
+                'other': 'other',
+            }
+            
+            # Create SafetyAlert from the concern
+            alert = SafetyAlert.objects.create(
+                title=f"{concern.get_category_display()} - {concern.location_address[:50]}",
+                description=concern.description,
+                address=concern.location_address,
+                alert_type=category_to_alert_type.get(concern.category, 'other'),
+                severity='medium',
+                location_type='point',
+                latitude=concern.latitude,
+                longitude=concern.longitude,
+                is_active=True,
+                created_by=request.user
+            )
+            
+            # Mark concern as resolved
+            concern.status = 'resolved'
+            concern.resolved_at = timezone.now()
+            concern.admin_notes = f"Approved and converted to SafetyAlert #{alert.id}"
+            concern.save()
+            
+            messages.success(
+                request,
+                f"✓ Success! Safety Alert #{alert.id} created and published on the map. "
+                f"View it at <a href='/admin/accounts/safetyalert/{alert.id}/change/'>Safety Alert #{alert.id}</a>"
+            )
+            
+        except SafetyConcern.DoesNotExist:
+            messages.error(request, "Safety concern not found.")
+        except Exception as e:
+            messages.error(request, f"Error creating alert: {str(e)}")
+        
+        return redirect('admin:accounts_safetyconcern_change', concern_id)
+    
+    def approve_and_create_alert(self, request, queryset):
+        """Approve selected concerns and create SafetyAlerts from them."""
+        created_count = 0
+        error_count = 0
+        
+        for concern in queryset:
+            # Check if coordinates are available
+            if not concern.latitude or not concern.longitude:
+                error_count += 1
+                continue
+            
+            # Map concern category to alert type
+            category_to_alert_type = {
+                'broken_light': 'maintenance',
+                'unsafe_path': 'hazard',
+                'obstruction': 'hazard',
+                'vandalism': 'other',
+                'maintenance': 'maintenance',
+                'other': 'other',
+            }
+            
+            # Create SafetyAlert from the concern
+            alert = SafetyAlert.objects.create(
+                title=f"{concern.get_category_display()} - {concern.location_address[:50]}",
+                description=concern.description,
+                address=concern.location_address,
+                alert_type=category_to_alert_type.get(concern.category, 'other'),
+                severity='medium',  # Default to medium, admin can adjust
+                location_type='point',
+                latitude=concern.latitude,
+                longitude=concern.longitude,
+                is_active=True,
+                created_by=request.user
+            )
+            
+            # Mark concern as resolved
+            concern.status = 'resolved'
+            concern.resolved_at = timezone.now()
+            concern.admin_notes = f"Approved and converted to SafetyAlert #{alert.id}"
+            concern.save()
+            
+            created_count += 1
+        
+        # Provide feedback
+        if created_count > 0:
+            self.message_user(
+                request,
+                f"✓ Successfully created {created_count} safety alert(s) from approved concerns.",
+                level='success'
+            )
+        if error_count > 0:
+            self.message_user(
+                request,
+                f"⚠ {error_count} concern(s) skipped (missing GPS coordinates).",
+                level='warning'
+            )
+    approve_and_create_alert.short_description = "✓ Approve & Create Safety Alert on Map"
     
     def mark_as_pending(self, request, queryset):
         """Mark selected concerns as pending."""
