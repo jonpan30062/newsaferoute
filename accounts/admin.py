@@ -148,10 +148,15 @@ class SafetyConcernAdmin(admin.ModelAdmin):
     list_per_page = 25
     
     fieldsets = (
-        ("⚡ Quick Actions", {
-            "fields": ("status_change_section", "approve_button"),
+        ("🚨 PUBLISH TO MAP", {
+            "fields": ("approve_button",),
             "classes": ("wide",),
-            "description": "Quickly change status or approve to create a safety alert on the map"
+            "description": "Use this button to convert the concern into a Safety Alert visible to all users on the map"
+        }),
+        ("⚡ Quick Status Change", {
+            "fields": ("status_change_section",),
+            "classes": ("wide",),
+            "description": "Change the review status (this does NOT publish to map)"
         }),
         ("Status & Tracking", {
             "fields": ("status", "user", "created_at", "updated_at", "resolved_at"),
@@ -279,26 +284,33 @@ class SafetyConcernAdmin(admin.ModelAdmin):
     photo_preview.short_description = "Photo Preview"
     
     def approve_button(self, obj):
-        """Display approve button if concern is pending."""
-        if obj.pk and obj.status == 'pending':
+        """Display approve button for pending or approved concerns."""
+        if obj.pk and obj.status in ['pending', 'approved', 'in_review']:
+            # Show the button for concerns that haven't been converted yet
             return format_html(
                 '<a class="button" href="/admin/accounts/safetyconcern/{}/approve/" '
-                'style="background: #417690; color: white; padding: 10px 20px; '
-                'text-decoration: none; border-radius: 5px; display: inline-block; '
-                'font-weight: bold;">'
-                '✓ Approve & Create Safety Alert on Map</a>',
+                'style="background: #28a745; color: white; padding: 12px 24px; '
+                'text-decoration: none; border-radius: 8px; display: inline-block; '
+                'font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">'
+                '🚨 Approve & Publish Safety Alert to Map</a>'
+                '<p style="color: #666; margin-top: 10px; font-size: 13px;">'
+                'Click this button to create a safety alert that will be visible to all users on the map.</p>',
                 obj.pk
             )
         elif obj.status == 'resolved':
             return format_html(
-                '<div style="color: green; font-weight: bold;">✓ Already approved and published</div>'
+                '<div style="padding: 12px; background: #d4edda; border: 1px solid #c3e6cb; '
+                'border-radius: 8px; color: #155724;">'
+                '<strong>✓ Already Published</strong><br>'
+                '<span style="font-size: 13px;">This concern has been converted to a Safety Alert and is visible on the map.</span>'
+                '</div>'
             )
         else:
             return format_html(
-                '<div style="color: gray;">Concern status: {}</div>',
+                '<div style="color: #666; padding: 10px;">Concern status: <strong>{}</strong></div>',
                 obj.get_status_display()
             )
-    approve_button.short_description = "Approve This Concern"
+    approve_button.short_description = "🚨 Publish to Map"
     
     def get_urls(self):
         """Add custom URL for approving individual concerns."""
