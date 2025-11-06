@@ -363,6 +363,7 @@ class SafetyConcern(models.Model):
     
     STATUS_CHOICES = [
         ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
         ('in_review', 'In Review'),
         ('resolved', 'Resolved'),
         ('dismissed', 'Dismissed'),
@@ -459,6 +460,7 @@ class SafetyConcern(models.Model):
         """Return Bootstrap badge color class based on status."""
         color_map = {
             'pending': 'warning',
+            'approved': 'primary',
             'in_review': 'info',
             'resolved': 'success',
             'dismissed': 'secondary',
