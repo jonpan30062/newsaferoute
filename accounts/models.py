@@ -469,3 +469,152 @@ class SafetyConcern(models.Model):
             'dismissed': 'secondary',
         }
         return color_map.get(self.status, 'secondary')
+
+
+class BuildingView(models.Model):
+    """
+    Model for tracking building views and searches.
+    Helps administrators understand which buildings are most popular.
+    """
+    building = models.ForeignKey(
+        Building,
+        on_delete=models.CASCADE,
+        related_name='view_logs',
+        verbose_name="Building"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='building_views',
+        verbose_name="User"
+    )
+    view_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('search', 'Search'),
+            ('details', 'Details View'),
+            ('directions', 'Directions Request'),
+        ],
+        default='search',
+        verbose_name="View Type"
+    )
+    session_id = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Session ID",
+        help_text="Anonymous session tracking"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Viewed At")
+
+    class Meta:
+        verbose_name = "Building View"
+        verbose_name_plural = "Building Views"
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['building', 'timestamp']),
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['view_type', 'timestamp']),
+        ]
+
+    def __str__(self):
+        user_str = self.user.email if self.user else f"Anonymous ({self.session_id[:8]})"
+        return f"{self.building.name} - {self.get_view_type_display()} by {user_str}"
+
+
+class PageView(models.Model):
+    """
+    Model for tracking page views and user engagement.
+    Helps administrators understand overall system usage.
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='page_views',
+        verbose_name="User"
+    )
+    page_path = models.CharField(
+        max_length=255,
+        verbose_name="Page Path",
+        help_text="URL path of the page viewed"
+    )
+    page_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Page Name",
+        help_text="Friendly name for the page"
+    )
+    session_id = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Session ID"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Viewed At")
+
+    class Meta:
+        verbose_name = "Page View"
+        verbose_name_plural = "Page Views"
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['page_path', 'timestamp']),
+            models.Index(fields=['timestamp']),
+        ]
+
+    def __str__(self):
+        user_str = self.user.email if self.user else "Anonymous"
+        return f"{self.page_name or self.page_path} - {user_str}"
+
+
+class AlertInteraction(models.Model):
+    """
+    Model for tracking safety alert interactions.
+    Helps administrators understand which alerts users are viewing.
+    """
+    alert = models.ForeignKey(
+        SafetyAlert,
+        on_delete=models.CASCADE,
+        related_name='interaction_logs',
+        verbose_name="Safety Alert"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='alert_interactions',
+        verbose_name="User"
+    )
+    interaction_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('view', 'Viewed'),
+            ('click', 'Clicked'),
+            ('details', 'Viewed Details'),
+        ],
+        default='view',
+        verbose_name="Interaction Type"
+    )
+    session_id = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Session ID"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Interaction At")
+
+    class Meta:
+        verbose_name = "Alert Interaction"
+        verbose_name_plural = "Alert Interactions"
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['alert', 'timestamp']),
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['interaction_type', 'timestamp']),
+        ]
+
+    def __str__(self):
+        user_str = self.user.email if self.user else "Anonymous"
+        return f"{self.alert.title} - {self.get_interaction_type_display()} by {user_str}"

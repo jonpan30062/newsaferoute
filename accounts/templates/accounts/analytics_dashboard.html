@@ -1,0 +1,351 @@
+{% extends 'accounts/base.html' %}
+
+{% block title %}Usage Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5 fw-bold mb-3">Usage Analytics Dashboard</h1>
+            <p class="lead text-muted">Monitor campus safety system activity and trends</p>
+        </div>
+    </div>
+
+    <!-- Date Range Filter -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Time Period</h5>
+                    <div class="btn-group" role="group">
+                        <a href="?days=7" class="btn {% if days == 7 %}btn-primary{% else %}btn-outline-primary{% endif %}">Last 7 Days</a>
+                        <a href="?days=30" class="btn {% if days == 30 %}btn-primary{% else %}btn-outline-primary{% endif %}">Last 30 Days</a>
+                        <a href="?days=90" class="btn {% if days == 90 %}btn-primary{% else %}btn-outline-primary{% endif %}">Last 90 Days</a>
+                        <a href="?days=365" class="btn {% if days == 365 %}btn-primary{% else %}btn-outline-primary{% endif %}">Last Year</a>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">
+                        Showing data from {{ start_date|date:"M d, Y" }} to {{ end_date|date:"M d, Y" }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metrics Cards -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-primary mb-2">
+                        <i class="fas fa-building fa-2x"></i>
+                    </div>
+                    <h2 class="fw-bold mb-1">{{ building_views_total|default:"0" }}</h2>
+                    <p class="text-muted small mb-0">Building Views</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-success mb-2">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                    <h2 class="fw-bold mb-1">{{ active_users|default:"0" }}</h2>
+                    <p class="text-muted small mb-0">Active Users</p>
+                    <p class="text-muted small mb-0">of {{ total_users }} total</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-warning mb-2">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    </div>
+                    <h2 class="fw-bold mb-1">{{ alert_interactions_total|default:"0" }}</h2>
+                    <p class="text-muted small mb-0">Alert Interactions</p>
+                    <p class="text-muted small mb-0">{{ active_alerts_count }} active alerts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-danger mb-2">
+                        <i class="fas fa-flag fa-2x"></i>
+                    </div>
+                    <h2 class="fw-bold mb-1">{{ total_concerns|default:"0" }}</h2>
+                    <p class="text-muted small mb-0">Safety Concerns</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <!-- Building Views Chart -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Building View Types</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="buildingViewsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert Interactions Chart -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Alert Interaction Types</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="alertInteractionsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tables Row -->
+    <div class="row mb-4">
+        <!-- Top Buildings Table -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Top 10 Most Viewed Buildings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Building</th>
+                                    <th>Code</th>
+                                    <th class="text-end">Views</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for building in top_buildings %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ building.building__name }}</td>
+                                    <td><span class="badge bg-secondary">{{ building.building__code }}</span></td>
+                                    <td class="text-end"><strong>{{ building.view_count }}</strong></td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Alerts Table -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Top 10 Most Interacted Alerts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Alert</th>
+                                    <th>Type</th>
+                                    <th class="text-end">Interactions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in top_alerts %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ alert.alert__title|truncatewords:5 }}</td>
+                                    <td><span class="badge bg-warning">{{ alert.alert__alert_type }}</span></td>
+                                    <td class="text-end"><strong>{{ alert.interaction_count }}</strong></td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Engagement Stats -->
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">User Engagement</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="border-end">
+                                <h3 class="fw-bold text-primary">{{ total_favorites|default:"0" }}</h3>
+                                <p class="text-muted small mb-0">Favorites Added</p>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <h3 class="fw-bold text-success">{{ total_routes_saved|default:"0" }}</h3>
+                            <p class="text-muted small mb-0">Routes Saved</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Safety Concerns Stats -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Safety Concerns by Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="concernsStatusChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// Building Views Chart
+const buildingViewsData = {
+    labels: [
+        {% for view_type in building_views_by_type %}
+            '{{ view_type.view_type|title }}'{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+    datasets: [{
+        label: 'Views',
+        data: [
+            {% for view_type in building_views_by_type %}
+                {{ view_type.count }}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+        backgroundColor: [
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+            'rgba(255, 206, 86, 0.8)'
+        ],
+        borderWidth: 0
+    }]
+};
+
+new Chart(document.getElementById('buildingViewsChart'), {
+    type: 'doughnut',
+    data: buildingViewsData,
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Alert Interactions Chart
+const alertInteractionsData = {
+    labels: [
+        {% for interaction in alert_interactions_by_type %}
+            '{{ interaction.interaction_type|title }}'{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+    datasets: [{
+        label: 'Interactions',
+        data: [
+            {% for interaction in alert_interactions_by_type %}
+                {{ interaction.count }}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+        backgroundColor: [
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 206, 86, 0.8)'
+        ],
+        borderWidth: 0
+    }]
+};
+
+new Chart(document.getElementById('alertInteractionsChart'), {
+    type: 'pie',
+    data: alertInteractionsData,
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Safety Concerns Status Chart
+const concernsStatusData = {
+    labels: [
+        {% for concern in concerns_by_status %}
+            '{{ concern.status|title }}'{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+    datasets: [{
+        label: 'Concerns',
+        data: [
+            {% for concern in concerns_by_status %}
+                {{ concern.count }}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+        backgroundColor: [
+            'rgba(255, 206, 86, 0.8)',
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(153, 102, 255, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+            'rgba(201, 203, 207, 0.8)'
+        ],
+        borderWidth: 0
+    }]
+};
+
+new Chart(document.getElementById('concernsStatusChart'), {
+    type: 'bar',
+    data: concernsStatusData,
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

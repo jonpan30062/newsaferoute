@@ -1,0 +1,380 @@
+/* SafeRoute Theme System - Light and Dark Mode Support */
+
+/* Root CSS Variables - Light Mode (Default) */
+:root {
+    /* Primary Colors */
+    --primary-color: #0ea5e9;
+    --primary-dark: #0284c7;
+    --primary-light: #38bdf8;
+    --secondary-color: #10b981;
+    --secondary-dark: #059669;
+    --accent-color: #fbbf24;
+    --accent-dark: #f59e0b;
+
+    /* Background Colors */
+    --bg-gradient-start: #0ea5e9;
+    --bg-gradient-end: #10b981;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #f3f4f6;
+    --bg-overlay: rgba(255, 255, 255, 0.95);
+
+    /* Text Colors */
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --text-muted: #9ca3af;
+    --text-inverse: #ffffff;
+
+    /* Border Colors */
+    --border-color: #e5e7eb;
+    --border-light: #f3f4f6;
+    --border-dark: #d1d5db;
+
+    /* Component Colors */
+    --navbar-bg: #ffffff;
+    --navbar-text: #1f2937;
+    --card-bg: #ffffff;
+    --card-shadow: rgba(0, 0, 0, 0.1);
+    --input-bg: #ffffff;
+    --input-border: #d1d5db;
+    --input-focus-border: #0ea5e9;
+
+    /* Button Colors */
+    --btn-primary-bg: linear-gradient(135deg, #0ea5e9, #10b981);
+    --btn-primary-hover: linear-gradient(135deg, #0284c7, #059669);
+    --btn-secondary-bg: #6b7280;
+    --btn-secondary-hover: #4b5563;
+
+    /* Map Specific */
+    --map-controls-bg: #ffffff;
+    --map-controls-shadow: rgba(0, 0, 0, 0.15);
+    --search-bar-bg: #ffffff;
+    --search-results-bg: #ffffff;
+    --search-result-hover: #f3f4f6;
+
+    /* Alert Colors */
+    --alert-danger: #ef4444;
+    --alert-warning: #f59e0b;
+    --alert-info: #3b82f6;
+    --alert-success: #10b981;
+
+    /* Safety Alert Colors */
+    --alert-critical-bg: rgba(239, 68, 68, 0.2);
+    --alert-critical-border: #ef4444;
+    --alert-high-bg: rgba(245, 158, 11, 0.2);
+    --alert-high-border: #f59e0b;
+    --alert-medium-bg: rgba(59, 130, 246, 0.2);
+    --alert-medium-border: #3b82f6;
+
+    /* Loading Overlay */
+    --loading-overlay-bg: rgba(255, 255, 255, 0.9);
+    --loading-spinner-color: #0ea5e9;
+}
+
+/* Dark Mode Variables */
+[data-theme="dark"] {
+    /* Primary Colors - Slightly adjusted for dark mode visibility */
+    --primary-color: #38bdf8;
+    --primary-dark: #0ea5e9;
+    --primary-light: #7dd3fc;
+    --secondary-color: #34d399;
+    --secondary-dark: #10b981;
+    --accent-color: #fcd34d;
+    --accent-dark: #fbbf24;
+
+    /* Background Colors */
+    --bg-gradient-start: #1e293b;
+    --bg-gradient-end: #0f172a;
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-overlay: rgba(15, 23, 42, 0.95);
+
+    /* Text Colors */
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-inverse: #0f172a;
+
+    /* Border Colors */
+    --border-color: #334155;
+    --border-light: #475569;
+    --border-dark: #1e293b;
+
+    /* Component Colors */
+    --navbar-bg: #1e293b;
+    --navbar-text: #f1f5f9;
+    --card-bg: #1e293b;
+    --card-shadow: rgba(0, 0, 0, 0.3);
+    --input-bg: #334155;
+    --input-border: #475569;
+    --input-focus-border: #38bdf8;
+
+    /* Button Colors */
+    --btn-primary-bg: linear-gradient(135deg, #38bdf8, #34d399);
+    --btn-primary-hover: linear-gradient(135deg, #0ea5e9, #10b981);
+    --btn-secondary-bg: #475569;
+    --btn-secondary-hover: #64748b;
+
+    /* Map Specific */
+    --map-controls-bg: #1e293b;
+    --map-controls-shadow: rgba(0, 0, 0, 0.5);
+    --search-bar-bg: #334155;
+    --search-results-bg: #1e293b;
+    --search-result-hover: #334155;
+
+    /* Alert Colors - Adjusted for dark mode */
+    --alert-danger: #f87171;
+    --alert-warning: #fbbf24;
+    --alert-info: #60a5fa;
+    --alert-success: #34d399;
+
+    /* Safety Alert Colors */
+    --alert-critical-bg: rgba(248, 113, 113, 0.15);
+    --alert-critical-border: #f87171;
+    --alert-high-bg: rgba(251, 191, 36, 0.15);
+    --alert-high-border: #fbbf24;
+    --alert-medium-bg: rgba(96, 165, 250, 0.15);
+    --alert-medium-border: #60a5fa;
+
+    /* Loading Overlay */
+    --loading-overlay-bg: rgba(15, 23, 42, 0.9);
+    --loading-spinner-color: #38bdf8;
+}
+
+/* Theme Toggle Button Styles */
+.theme-toggle-btn {
+    background: transparent;
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 10px;
+}
+
+.theme-toggle-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+    transform: rotate(15deg);
+}
+
+.theme-toggle-btn i {
+    font-size: 1.2rem;
+}
+
+/* Smooth transitions for theme changes */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Apply theme variables to body */
+body {
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    color: var(--text-primary);
+}
+
+/* Navbar Theming */
+.navbar {
+    background-color: var(--navbar-bg) !important;
+    box-shadow: 0 2px 4px var(--card-shadow);
+}
+
+.navbar .navbar-brand,
+.navbar .nav-link {
+    color: var(--navbar-text) !important;
+}
+
+.navbar .nav-link:hover {
+    color: var(--primary-color) !important;
+}
+
+/* Card Theming */
+.card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    box-shadow: 0 4px 6px var(--card-shadow);
+}
+
+.card-header {
+    background-color: var(--bg-secondary);
+    border-bottom-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* Form Input Theming */
+.form-control,
+.form-select {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--input-bg);
+    border-color: var(--input-focus-border);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 0.25rem rgba(14, 165, 233, 0.25);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+/* Button Theming */
+.btn-primary {
+    background: var(--btn-primary-bg);
+    border: none;
+    color: var(--text-inverse);
+}
+
+.btn-primary:hover {
+    background: var(--btn-primary-hover);
+}
+
+.btn-secondary {
+    background-color: var(--btn-secondary-bg);
+    border-color: var(--btn-secondary-bg);
+}
+
+.btn-secondary:hover {
+    background-color: var(--btn-secondary-hover);
+    border-color: var(--btn-secondary-hover);
+}
+
+/* Alert Theming */
+.alert-danger {
+    background-color: var(--alert-critical-bg);
+    border-color: var(--alert-critical-border);
+    color: var(--alert-danger);
+}
+
+.alert-warning {
+    background-color: var(--alert-high-bg);
+    border-color: var(--alert-high-border);
+    color: var(--alert-warning);
+}
+
+.alert-info {
+    background-color: var(--alert-medium-bg);
+    border-color: var(--alert-medium-border);
+    color: var(--alert-info);
+}
+
+/* Table Theming */
+.table {
+    color: var(--text-primary);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: var(--bg-tertiary);
+}
+
+.table-hover > tbody > tr:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Modal Theming */
+.modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.modal-header,
+.modal-footer {
+    border-color: var(--border-color);
+}
+
+/* Dropdown Theming */
+.dropdown-menu {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+.dropdown-item {
+    color: var(--text-primary);
+}
+
+.dropdown-item:hover {
+    background-color: var(--bg-secondary);
+    color: var(--primary-color);
+}
+
+/* List Group Theming */
+.list-group-item {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.list-group-item:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Badge Theming */
+.badge {
+    background-color: var(--primary-color);
+    color: var(--text-inverse);
+}
+
+/* Toast Theming */
+.toast {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+/* Map Controls Theming */
+.map-controls {
+    background-color: var(--map-controls-bg);
+    box-shadow: 0 2px 6px var(--map-controls-shadow);
+}
+
+/* Loading Overlay Theming */
+.loading-overlay {
+    background-color: var(--loading-overlay-bg);
+}
+
+.spinner-border {
+    color: var(--loading-spinner-color);
+}
+
+/* Google Maps Dark Mode Styles */
+[data-theme="dark"] .gm-style {
+    filter: invert(90%) hue-rotate(180deg);
+}
+
+[data-theme="dark"] .gm-style img {
+    filter: invert(100%) hue-rotate(180deg);
+}
+
+/* Text Utilities */
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+.text-secondary {
+    color: var(--text-secondary) !important;
+}
+
+/* Border Utilities */
+.border {
+    border-color: var(--border-color) !important;
+}
+
+/* Background Utilities */
+.bg-light {
+    background-color: var(--bg-secondary) !important;
+}
+
+.bg-white {
+    background-color: var(--bg-primary) !important;
+}

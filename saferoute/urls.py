@@ -19,9 +19,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from accounts.views import home_view
+from accounts.admin import admin_site  # Import custom admin site
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin/", admin_site.urls),  # Use custom admin site
     path("", home_view, name="home"),
     path("", include("accounts.urls")),
 ]

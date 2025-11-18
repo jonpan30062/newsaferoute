@@ -6,7 +6,42 @@ from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
 from django.db.models import Q
 from .forms import RegistrationForm, LoginForm, ProfileUpdateForm, SafetyConcernForm
-from .models import Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern
+from .models import Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern, BuildingView, PageView, AlertInteraction
+
+
+def get_session_id(request):
+    """Get or create a session ID for analytics tracking."""
+    if not request.session.session_key:
+        request.session.create()
+    return request.session.session_key
+
+
+def track_building_view(building, user, view_type, session_id):
+    """Helper function to track building views."""
+    try:
+        BuildingView.objects.create(
+            building=building,
+            user=user if user.is_authenticated else None,
+            view_type=view_type,
+            session_id=session_id
+        )
+    except Exception:
+        # Silently fail if tracking fails - don't break the user experience
+        pass
+
+
+def track_alert_interaction(alert, user, interaction_type, session_id):
+    """Helper function to track alert interactions."""
+    try:
+        AlertInteraction.objects.create(
+            alert=alert,
+            user=user if user.is_authenticated else None,
+            interaction_type=interaction_type,
+            session_id=session_id
+        )
+    except Exception:
+        # Silently fail if tracking fails
+        pass
 
 
 def register_view(request):
@@ -172,18 +207,24 @@ def building_search_api(request):
     Returns JSON list of matching buildings.
     """
     query = request.GET.get('q', '').strip()
-    
+    session_id = get_session_id(request)
+
     if not query:
         # Return all buildings if no query provided
         buildings = Building.objects.all()[:20]  # Limit to 20 results
     else:
         # Search by name, code, or address (partial match, case-insensitive)
         buildings = Building.objects.filter(
-            Q(name__icontains=query) | 
-            Q(code__icontains=query) | 
+            Q(name__icontains=query) |
+            Q(code__icontains=query) |
             Q(address__icontains=query)
         )[:20]
-    
+
+    # Track building searches for analytics (only if there's a query)
+    if query and buildings:
+        for building in buildings:
+            track_building_view(building, request.user, 'search', session_id)
+
     # Format results as JSON
     results = []
     for building in buildings:
@@ -196,7 +237,7 @@ def building_search_api(request):
             'longitude': float(building.longitude),
             'description': building.description,
         })
-    
+
     return JsonResponse({
         'success': True,
         'count': len(results),
@@ -762,7 +803,11 @@ def get_alert_detail_api(request, alert_id):
     """
     try:
         alert = SafetyAlert.objects.select_related('created_by').get(id=alert_id)
-        
+        session_id = get_session_id(request)
+
+        # Track alert detail view for analytics
+        track_alert_interaction(alert, request.user, 'details', session_id)
+
         alert_data = {
             'id': alert.id,
             'title': alert.title,
@@ -778,32 +823,32 @@ def get_alert_detail_api(request, alert_id):
             'icon_url': alert.get_icon_url(),
             'color': alert.get_color(),
         }
-        
+
         if alert.location_type == 'circle' and alert.radius:
             alert_data['radius'] = float(alert.radius)
-        
+
         if alert.location_type == 'polygon':
             polygon_coords = alert.get_polygon_coordinates()
             if polygon_coords:
                 alert_data['polygon_coordinates'] = polygon_coords
-        
+
         if alert.start_date:
             alert_data['start_date'] = alert.start_date.isoformat()
         if alert.end_date:
             alert_data['end_date'] = alert.end_date.isoformat()
-        
+
         if alert.created_by:
             alert_data['created_by'] = {
                 'id': alert.created_by.id,
                 'email': alert.created_by.email,
                 'full_name': alert.created_by.get_full_name()
             }
-        
+
         return JsonResponse({
             'success': True,
             'alert': alert_data
         })
-        
+
     except SafetyAlert.DoesNotExist:
         return JsonResponse({
             'success': False,
@@ -858,3 +903,126 @@ def report_safety_concern_view(request):
     }
     
     return render(request, 'accounts/report_safety_concern.html', context)
+
+
+def analytics_dashboard(request):
+    """
+    Analytics dashboard view for administrators.
+    Displays usage statistics, charts, and trends.
+    """
+    from django.contrib.admin.views.decorators import staff_member_required
+    from django.db.models import Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+
+    # Require staff/admin access
+    if not request.user.is_staff:
+        return redirect('home')
+
+    # Get date filter parameters
+    days = int(request.GET.get('days', 30))  # Default to 30 days
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=days)
+
+    # Building Analytics
+    building_views_total = BuildingView.objects.filter(
+        timestamp__gte=start_date
+    ).count()
+
+    top_buildings = BuildingView.objects.filter(
+        timestamp__gte=start_date
+    ).values(
+        'building__name', 'building__code'
+    ).annotate(
+        view_count=Count('id')
+    ).order_by('-view_count')[:10]
+
+    building_views_by_type = BuildingView.objects.filter(
+        timestamp__gte=start_date
+    ).values('view_type').annotate(
+        count=Count('id')
+    ).order_by('-count')
+
+    # User Engagement Analytics
+    total_users = User.objects.filter(is_active=True).count()
+    active_users = BuildingView.objects.filter(
+        timestamp__gte=start_date,
+        user__isnull=False
+    ).values('user').distinct().count()
+
+    total_favorites = Favorite.objects.filter(
+        created_at__gte=start_date
+    ).count()
+
+    total_routes_saved = SavedRoute.objects.filter(
+        created_at__gte=start_date
+    ).count()
+
+    # Safety Alert Analytics
+    alert_interactions_total = AlertInteraction.objects.filter(
+        timestamp__gte=start_date
+    ).count()
+
+    top_alerts = AlertInteraction.objects.filter(
+        timestamp__gte=start_date
+    ).values(
+        'alert__title', 'alert__alert_type', 'alert__severity'
+    ).annotate(
+        interaction_count=Count('id')
+    ).order_by('-interaction_count')[:10]
+
+    alert_interactions_by_type = AlertInteraction.objects.filter(
+        timestamp__gte=start_date
+    ).values('interaction_type').annotate(
+        count=Count('id')
+    ).order_by('-count')
+
+    # Safety Concerns Analytics
+    total_concerns = SafetyConcern.objects.filter(
+        created_at__gte=start_date
+    ).count()
+
+    concerns_by_status = SafetyConcern.objects.filter(
+        created_at__gte=start_date
+    ).values('status').annotate(
+        count=Count('id')
+    ).order_by('-count')
+
+    concerns_by_category = SafetyConcern.objects.filter(
+        created_at__gte=start_date
+    ).values('category').annotate(
+        count=Count('id')
+    ).order_by('-count')
+
+    # Active Safety Alerts
+    active_alerts_count = SafetyAlert.objects.filter(is_active=True).count()
+
+    context = {
+        'days': days,
+        'start_date': start_date,
+        'end_date': end_date,
+
+        # Building stats
+        'building_views_total': building_views_total,
+        'top_buildings': top_buildings,
+        'building_views_by_type': building_views_by_type,
+
+        # User engagement
+        'total_users': total_users,
+        'active_users': active_users,
+        'total_favorites': total_favorites,
+        'total_routes_saved': total_routes_saved,
+
+        # Alert stats
+        'alert_interactions_total': alert_interactions_total,
+        'top_alerts': top_alerts,
+        'alert_interactions_by_type': alert_interactions_by_type,
+        'active_alerts_count': active_alerts_count,
+
+        # Safety concerns
+        'total_concerns': total_concerns,
+        'concerns_by_status': concerns_by_status,
+        'concerns_by_category': concerns_by_category,
+    }
+
+    return render(request, 'accounts/analytics_dashboard.html', context)

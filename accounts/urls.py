@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/alerts/', views.get_alerts_api, name='get_alerts'),
     path('api/alerts/<int:alert_id>/', views.get_alert_detail_api, name='get_alert_detail'),
     path('report-safety-concern/', views.report_safety_concern_view, name='report_safety_concern'),
+    path('analytics/', views.analytics_dashboard, name='analytics_dashboard'),
 ]

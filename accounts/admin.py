@@ -3,9 +3,11 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.utils import timezone
 from django.urls import path
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.contrib import messages
-from .models import User, Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern
+from django.db.models import Count
+from datetime import timedelta
+from .models import User, Building, Favorite, SavedRoute, SafetyAlert, SafetyConcern, BuildingView, PageView, AlertInteraction
 
 
 @admin.register(User)
@@ -614,3 +616,310 @@ class SafetyConcernAdmin(admin.ModelAdmin):
                 messages.error(request, "Safety concern not found.")
         
         return redirect(reverse('admin:accounts_safetyconcern_changelist'))
+
+
+@admin.register(BuildingView)
+class BuildingViewAdmin(admin.ModelAdmin):
+    """Admin configuration for BuildingView analytics model."""
+    list_display = ['building', 'view_type', 'user_display', 'timestamp']
+    list_filter = ['view_type', 'timestamp', 'building']
+    search_fields = ['building__name', 'building__code', 'user__email']
+    date_hierarchy = 'timestamp'
+    readonly_fields = ['building', 'user', 'view_type', 'session_id', 'timestamp']
+
+    def user_display(self, obj):
+        """Display user email or Anonymous."""
+        return obj.user.email if obj.user else f"Anonymous ({obj.session_id[:8]})"
+    user_display.short_description = "User"
+
+    def has_add_permission(self, request):
+        """Disable manual adding of analytics records."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Disable editing of analytics records."""
+        return False
+
+
+@admin.register(PageView)
+class PageViewAdmin(admin.ModelAdmin):
+    """Admin configuration for PageView analytics model."""
+    list_display = ['page_name', 'page_path', 'user_display', 'timestamp']
+    list_filter = ['page_name', 'timestamp']
+    search_fields = ['page_path', 'page_name', 'user__email']
+    date_hierarchy = 'timestamp'
+    readonly_fields = ['user', 'page_path', 'page_name', 'session_id', 'timestamp']
+
+    def user_display(self, obj):
+        """Display user email or Anonymous."""
+        return obj.user.email if obj.user else "Anonymous"
+    user_display.short_description = "User"
+
+    def has_add_permission(self, request):
+        """Disable manual adding of analytics records."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Disable editing of analytics records."""
+        return False
+
+
+@admin.register(AlertInteraction)
+class AlertInteractionAdmin(admin.ModelAdmin):
+    """Admin configuration for AlertInteraction analytics model."""
+    list_display = ['alert', 'interaction_type', 'user_display', 'timestamp']
+    list_filter = ['interaction_type', 'timestamp', 'alert']
+    search_fields = ['alert__title', 'user__email']
+    date_hierarchy = 'timestamp'
+    readonly_fields = ['alert', 'user', 'interaction_type', 'session_id', 'timestamp']
+
+    def user_display(self, obj):
+        """Display user email or Anonymous."""
+        return obj.user.email if obj.user else "Anonymous"
+    user_display.short_description = "User"
+
+    def has_add_permission(self, request):
+        """Disable manual adding of analytics records."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Disable editing of analytics records."""
+        return False
+
+
+# Custom Admin Site with Analytics Dashboard
+from django.contrib.admin import AdminSite as BaseAdminSite
+
+class SafeRouteAdminSite(BaseAdminSite):
+    site_header = "SafeRoute Administration"
+    site_title = "SafeRoute Admin"
+    index_title = "Usage Analytics Dashboard"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('analytics/', self.admin_view(self.analytics_dashboard_view), name='analytics_dashboard'),
+        ]
+        return custom_urls + urls
+
+    def index(self, request, extra_context=None):
+        """Override index view to include analytics data."""
+        extra_context = extra_context or {}
+
+        # Get date filter parameters
+        days = int(request.GET.get('days', 30))  # Default to 30 days
+        end_date = timezone.now()
+        start_date = end_date - timedelta(days=days)
+
+        # Building Analytics
+        building_views_total = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).count()
+
+        top_buildings = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).values(
+            'building__name', 'building__code'
+        ).annotate(
+            view_count=Count('id')
+        ).order_by('-view_count')[:10]
+
+        building_views_by_type = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).values('view_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # User Engagement Analytics
+        total_users = User.objects.filter(is_active=True).count()
+        active_users = BuildingView.objects.filter(
+            timestamp__gte=start_date,
+            user__isnull=False
+        ).values('user').distinct().count()
+
+        total_favorites = Favorite.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        total_routes_saved = SavedRoute.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        # Safety Alert Analytics
+        alert_interactions_total = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).count()
+
+        top_alerts = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).values(
+            'alert__title', 'alert__alert_type', 'alert__severity'
+        ).annotate(
+            interaction_count=Count('id')
+        ).order_by('-interaction_count')[:10]
+
+        alert_interactions_by_type = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).values('interaction_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # Safety Concerns Analytics
+        total_concerns = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        concerns_by_status = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).values('status').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        concerns_by_category = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).values('category').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # Active Safety Alerts
+        active_alerts_count = SafetyAlert.objects.filter(is_active=True).count()
+
+        extra_context.update({
+            'days': days,
+            'start_date': start_date,
+            'end_date': end_date,
+            'building_views_total': building_views_total,
+            'top_buildings': top_buildings,
+            'building_views_by_type': building_views_by_type,
+            'total_users': total_users,
+            'active_users': active_users,
+            'total_favorites': total_favorites,
+            'total_routes_saved': total_routes_saved,
+            'alert_interactions_total': alert_interactions_total,
+            'top_alerts': top_alerts,
+            'alert_interactions_by_type': alert_interactions_by_type,
+            'active_alerts_count': active_alerts_count,
+            'total_concerns': total_concerns,
+            'concerns_by_status': concerns_by_status,
+            'concerns_by_category': concerns_by_category,
+        })
+
+        return super().index(request, extra_context)
+
+    def analytics_dashboard_view(self, request):
+        """Analytics dashboard view for administrators."""
+        # Get date filter parameters
+        days = int(request.GET.get('days', 30))  # Default to 30 days
+        end_date = timezone.now()
+        start_date = end_date - timedelta(days=days)
+
+        # Building Analytics
+        building_views_total = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).count()
+
+        top_buildings = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).values(
+            'building__name', 'building__code'
+        ).annotate(
+            view_count=Count('id')
+        ).order_by('-view_count')[:10]
+
+        building_views_by_type = BuildingView.objects.filter(
+            timestamp__gte=start_date
+        ).values('view_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # User Engagement Analytics
+        total_users = User.objects.filter(is_active=True).count()
+        active_users = BuildingView.objects.filter(
+            timestamp__gte=start_date,
+            user__isnull=False
+        ).values('user').distinct().count()
+
+        total_favorites = Favorite.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        total_routes_saved = SavedRoute.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        # Safety Alert Analytics
+        alert_interactions_total = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).count()
+
+        top_alerts = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).values(
+            'alert__title', 'alert__alert_type', 'alert__severity'
+        ).annotate(
+            interaction_count=Count('id')
+        ).order_by('-interaction_count')[:10]
+
+        alert_interactions_by_type = AlertInteraction.objects.filter(
+            timestamp__gte=start_date
+        ).values('interaction_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # Safety Concerns Analytics
+        total_concerns = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).count()
+
+        concerns_by_status = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).values('status').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        concerns_by_category = SafetyConcern.objects.filter(
+            created_at__gte=start_date
+        ).values('category').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # Active Safety Alerts
+        active_alerts_count = SafetyAlert.objects.filter(is_active=True).count()
+
+        context = {
+            **self.each_context(request),
+            'title': 'Usage Analytics Dashboard',
+            'days': days,
+            'start_date': start_date,
+            'end_date': end_date,
+            'building_views_total': building_views_total,
+            'top_buildings': top_buildings,
+            'building_views_by_type': building_views_by_type,
+            'total_users': total_users,
+            'active_users': active_users,
+            'total_favorites': total_favorites,
+            'total_routes_saved': total_routes_saved,
+            'alert_interactions_total': alert_interactions_total,
+            'top_alerts': top_alerts,
+            'alert_interactions_by_type': alert_interactions_by_type,
+            'active_alerts_count': active_alerts_count,
+            'total_concerns': total_concerns,
+            'concerns_by_status': concerns_by_status,
+            'concerns_by_category': concerns_by_category,
+        }
+
+        return render(request, 'admin/analytics_dashboard.html', context)
+
+# Create custom admin site instance
+admin_site = SafeRouteAdminSite(name='saferoute_admin')
+
+# Re-register all models with the custom admin site
+admin_site.register(User, UserAdmin)
+admin_site.register(Building, BuildingAdmin)
+admin_site.register(Favorite, FavoriteAdmin)
+admin_site.register(SavedRoute, SavedRouteAdmin)
+admin_site.register(SafetyAlert, SafetyAlertAdmin)
+admin_site.register(SafetyConcern, SafetyConcernAdmin)
+admin_site.register(BuildingView, BuildingViewAdmin)
+admin_site.register(PageView, PageViewAdmin)
+admin_site.register(AlertInteraction, AlertInteractionAdmin)
