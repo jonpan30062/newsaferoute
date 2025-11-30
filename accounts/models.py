@@ -40,6 +40,27 @@ class Building(models.Model):
     latitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Latitude")
     longitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Longitude")
     description = models.TextField(blank=True, verbose_name="Description")
+    
+    # Waitz occupancy data fields
+    waitz_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Waitz ID", help_text="Waitz.io building identifier")
+    current_occupancy_percent = models.IntegerField(null=True, blank=True, verbose_name="Current Occupancy %", help_text="Current occupancy percentage (0-100)")
+    occupancy_status = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ('not_busy', 'Not Busy'),
+            ('moderate', 'Moderate'),
+            ('busy', 'Busy'),
+            ('very_busy', 'Very Busy'),
+        ],
+        verbose_name="Occupancy Status"
+    )
+    next_hour_prediction = models.CharField(max_length=100, blank=True, verbose_name="Next Hour Prediction")
+    peak_hours = models.CharField(max_length=255, blank=True, verbose_name="Peak Hours", help_text="Comma-separated list of peak hours")
+    best_study_spot = models.CharField(max_length=255, blank=True, verbose_name="Best Study Spot", help_text="Recommended study area")
+    operating_hours = models.CharField(max_length=255, blank=True, verbose_name="Operating Hours")
+    occupancy_last_updated = models.DateTimeField(null=True, blank=True, verbose_name="Occupancy Last Updated")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -50,6 +71,43 @@ class Building(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+    
+    def get_occupancy_display(self):
+        """Get human-readable occupancy status."""
+        if self.current_occupancy_percent is None:
+            return None
+        
+        status_map = {
+            'not_busy': 'Not Busy',
+            'moderate': 'Moderate',
+            'busy': 'Busy',
+            'very_busy': 'Very Busy',
+        }
+        
+        return {
+            'percent': self.current_occupancy_percent,
+            'status': status_map.get(self.occupancy_status, 'Unknown'),
+            'status_key': self.occupancy_status,
+            'next_hour': self.next_hour_prediction,
+            'peak_hours': self.peak_hours,
+            'best_spot': self.best_study_spot,
+            'hours': self.operating_hours,
+            'last_updated': self.occupancy_last_updated,
+        }
+    
+    def get_occupancy_color(self):
+        """Get color code based on occupancy level."""
+        if self.current_occupancy_percent is None:
+            return '#6b7280'  # Gray
+        
+        if self.current_occupancy_percent < 30:
+            return '#10b981'  # Green - Not Busy
+        elif self.current_occupancy_percent < 60:
+            return '#f59e0b'  # Yellow - Moderate
+        elif self.current_occupancy_percent < 80:
+            return '#f97316'  # Orange - Busy
+        else:
+            return '#ef4444'  # Red - Very Busy
 
 
 class Favorite(models.Model):

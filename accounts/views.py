@@ -204,10 +204,36 @@ def building_search_api(request):
     """
     API endpoint for searching buildings by name or code.
     Supports partial matching (case-insensitive).
+    Also supports fetching a single building by ID using building_id parameter.
     Returns JSON list of matching buildings.
     """
     query = request.GET.get('q', '').strip()
+    building_id = request.GET.get('building_id')
     session_id = get_session_id(request)
+
+    # If building_id is provided, return that specific building
+    if building_id:
+        try:
+            building = Building.objects.get(id=building_id)
+            results = [{
+                'id': building.id,
+                'name': building.name,
+                'code': building.code,
+                'address': building.address,
+                'latitude': float(building.latitude),
+                'longitude': float(building.longitude),
+                'description': building.description,
+            }]
+            return JsonResponse({
+                'success': True,
+                'count': 1,
+                'buildings': results
+            })
+        except Building.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Building not found'
+            }, status=404)
 
     if not query:
         # Return all buildings if no query provided
@@ -228,7 +254,7 @@ def building_search_api(request):
     # Format results as JSON
     results = []
     for building in buildings:
-        results.append({
+        building_data = {
             'id': building.id,
             'name': building.name,
             'code': building.code,
@@ -236,7 +262,21 @@ def building_search_api(request):
             'latitude': float(building.latitude),
             'longitude': float(building.longitude),
             'description': building.description,
-        })
+        }
+        
+        # Add occupancy data if available
+        if building.current_occupancy_percent is not None:
+            building_data['occupancy'] = {
+                'percent': building.current_occupancy_percent,
+                'status': building.occupancy_status,
+                'next_hour_prediction': building.next_hour_prediction,
+                'peak_hours': building.peak_hours,
+                'best_study_spot': building.best_study_spot,
+                'operating_hours': building.operating_hours,
+                'last_updated': building.occupancy_last_updated.isoformat() if building.occupancy_last_updated else None,
+            }
+        
+        results.append(building_data)
 
     return JsonResponse({
         'success': True,
