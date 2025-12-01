@@ -84,11 +84,11 @@ class Command(BaseCommand):
                 if 'Zip' in df.columns and pd.notna(row['Zip']):
                     full_address += f" {row['Zip']}"
                 
-                # Get coordinates
+                # Get coordinates from Excel file (required)
                 latitude = None
                 longitude = None
                 
-                # Try to use existing coordinates first
+                # Use coordinates from Excel file
                 if 'Latitude' in df.columns and 'Longitude' in df.columns:
                     lat = row['Latitude']
                     lng = row['Longitude']
@@ -99,7 +99,7 @@ class Command(BaseCommand):
                         except (ValueError, TypeError):
                             pass
                 
-                # Geocode if coordinates not available and geocoding is enabled
+                # If coordinates are missing, try geocoding if enabled
                 if (latitude is None or longitude is None) and geocode and api_key:
                     self.stdout.write(f'  Geocoding: {building_name}...')
                     coordinates = self.geocode_address(full_address, api_key)
@@ -107,21 +107,15 @@ class Command(BaseCommand):
                         latitude, longitude = coordinates
                         time.sleep(0.2)  # Rate limiting for API (200ms between requests)
                 
-                # Don't use default coordinates - we'll geocode addresses dynamically
-                # Set coordinates to None so they'll be geocoded on-the-fly
+                # Skip if we still don't have coordinates (coordinates are required)
                 if latitude is None or longitude is None:
-                    # Use a placeholder that will trigger geocoding in JavaScript
-                    # We'll use the address to geocode dynamically
-                    latitude = None
-                    longitude = None
                     self.stdout.write(
                         self.style.WARNING(
-                            f'No coordinates for {building_name} - will geocode from address on map'
+                            f'⚠ Skipping {building_name} - missing coordinates'
                         )
                     )
-                
-                # If we still don't have coordinates, use address-based geocoding
-                # For now, we'll store the address and geocode in JavaScript
+                    skipped_count += 1
+                    continue
                 
                 # Create building code from building number or use first letters of name
                 if building_number:
@@ -140,14 +134,6 @@ class Command(BaseCommand):
                 
                 # Create description
                 description = f"Building Number: {building_number}" if building_number else ""
-                
-                # Only create building if we have valid coordinates or address
-                # If no coordinates, we'll use the address for geocoding
-                if latitude is None or longitude is None:
-                    # Use default GT campus coordinates as placeholder
-                    # JavaScript will geocode the address dynamically
-                    latitude = 33.7756
-                    longitude = -84.3963
                 
                 # Create or update building using name as unique identifier
                 # This ensures all buildings are imported even if codes might duplicate
