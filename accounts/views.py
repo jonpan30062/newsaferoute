@@ -1066,3 +1066,144 @@ def analytics_dashboard(request):
     }
 
     return render(request, 'accounts/analytics_dashboard.html', context)
+
+
+def chat_view(request):
+    """
+    Chat assistant view - displays the AI chat interface.
+    """
+    from django.conf import settings
+    context = {
+        'google_maps_api_key': settings.GOOGLE_MAPS_API_KEY,
+    }
+    return render(request, 'accounts/chat.html', context)
+
+
+@require_http_methods(["POST"])
+def chat_api(request):
+    """
+    API endpoint for chat assistant using Gemini AI.
+    Handles user queries about directions, buildings, and campus services.
+    """
+    import json
+    import google.generativeai as genai
+    from django.conf import settings
+    from django.db.models import Q
+
+    try:
+        data = json.loads(request.body)
+        user_message = data.get('message', '').strip()
+
+        if not user_message:
+            return JsonResponse({
+                'success': False,
+                'error': 'Message is required'
+            }, status=400)
+
+        # Initialize Gemini API
+        api_key = settings.GEMINI_API_KEY
+        if not api_key:
+            return JsonResponse({
+                'success': False,
+                'error': 'Gemini API key not configured. Please set GEMINI_API_KEY in your .env file.'
+            }, status=500)
+
+        genai.configure(api_key=api_key)
+        
+        # Try gemini-2.5-flash first (as requested), fallback to gemini-1.5-flash if not available
+        try:
+            model = genai.GenerativeModel('gemini-2.5-flash')
+        except Exception:
+            # Fallback to stable model if 2.5-flash is not available
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+            except Exception as e:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Failed to initialize Gemini model. Please check your API key. Error: {str(e)}'
+                }, status=500)
+
+        # Get building data for context
+        buildings = Building.objects.all()[:50]  # Get first 50 buildings for context
+        building_context = []
+        for building in buildings:
+            building_context.append({
+                'name': building.name,
+                'code': building.code,
+                'address': building.address,
+                'description': building.description or '',
+            })
+
+        # Create system prompt with building information
+        system_prompt = f"""You are a helpful AI assistant for Georgia Tech campus navigation and services. 
+You help students find buildings, get directions, and answer questions about campus services.
+
+Available Buildings (sample):
+{json.dumps(building_context, indent=2)}
+
+Your capabilities:
+1. Help students find buildings by name or code
+2. Provide directions between locations
+3. Answer questions about campus services (dining, libraries, parking, etc.)
+4. Provide general campus information
+
+When asked about a specific building:
+- Provide the building name, code, and address
+- If you know the building, mention it exists in the database
+- Suggest using the map feature to get directions
+
+When asked for directions:
+- Explain that students can use the campus map to get walking directions
+- Mention that the map shows real-time routes
+
+Be friendly, concise, and helpful. If you don't know something specific, suggest using the map or contacting campus services.
+
+Do not use markdown formatting in your responses.
+
+User question: {user_message}"""
+
+        # Generate response
+        response = model.generate_content(system_prompt)
+        
+        # Extract text from response
+        if hasattr(response, 'text'):
+            ai_response = response.text
+        elif hasattr(response, 'candidates') and len(response.candidates) > 0:
+            ai_response = response.candidates[0].content.parts[0].text
+        else:
+            ai_response = "I apologize, but I'm having trouble processing your request. Please try again."
+
+        # Check if user is asking about a specific building
+        building_suggestions = []
+        query_lower = user_message.lower()
+        
+        # Search for building mentions
+        for building in Building.objects.filter(
+            Q(name__icontains=query_lower) | Q(code__icontains=query_lower)
+        )[:5]:
+            building_suggestions.append({
+                'id': building.id,
+                'name': building.name,
+                'code': building.code,
+                'address': building.address,
+            })
+
+        return JsonResponse({
+            'success': True,
+            'response': ai_response,
+            'building_suggestions': building_suggestions if building_suggestions else None,
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        import traceback
+        print(f"Chat API Error: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': f'An error occurred: {str(e)}'
+        }, status=500)

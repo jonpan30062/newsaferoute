@@ -1,7 +1,13 @@
 """
 Background scheduler for updating occupancy data from Waitz.io
 """
-from apscheduler.schedulers.background import BackgroundScheduler
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    APSCHEDULER_AVAILABLE = False
+    BackgroundScheduler = None
+
 from django.core.management import call_command
 from django.utils import timezone
 import logging
@@ -30,6 +36,10 @@ def start_scheduler():
     """
     Start the background scheduler
     """
+    if not APSCHEDULER_AVAILABLE:
+        logger.warning("APScheduler not available. Install it with: pip install apscheduler")
+        return None
+    
     scheduler = BackgroundScheduler()
     
     # Schedule the job to run every 10 minutes

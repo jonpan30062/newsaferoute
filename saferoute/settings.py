@@ -147,3 +147,8 @@ LOGIN_URL = "/login/"
 # Get your API key from: https://console.cloud.google.com/google/maps-apis
 # Store your key in .env file (see .env.example for template)
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', 'AIzaSyBSynlwsgDX_IhvmpXHDEZ1g3UzWqDHmmo')
+
+# Google Gemini API Key
+# Get your API key from: https://makersuite.google.com/app/apikey
+# Store your key in .env file
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')

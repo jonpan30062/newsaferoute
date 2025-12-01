@@ -12,14 +12,18 @@ class AccountsConfig(AppConfig):
         """
         Run when Django starts up
         """
-        # Import scheduler here to avoid AppRegistryNotReady error
-        from .scheduler import start_scheduler
-        
         # Only start scheduler in runserver, not in migrate, shell, etc.
         import sys
         if 'runserver' in sys.argv:
             try:
-                start_scheduler()
-                logger.info("Background scheduler initialized")
+                # Import scheduler here to avoid AppRegistryNotReady error
+                from .scheduler import start_scheduler
+                scheduler = start_scheduler()
+                if scheduler:
+                    logger.info("Background scheduler initialized")
+                else:
+                    logger.warning("Scheduler not started - APScheduler may not be installed")
+            except ImportError as e:
+                logger.warning(f"Scheduler not available: {str(e)}. Install apscheduler to enable scheduled tasks.")
             except Exception as e:
                 logger.error(f"Failed to start scheduler: {str(e)}")
